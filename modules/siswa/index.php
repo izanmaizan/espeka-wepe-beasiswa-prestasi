@@ -6,34 +6,79 @@ requireRole('admin');
 
 // Handle delete action
 if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])) {
-    try {
-        $stmt = $pdo->prepare("DELETE FROM siswa WHERE id = ?");
-        $stmt->execute([$_GET['id']]);
-        setAlert('success', 'Data siswa berhasil dihapus!');
-    } catch (PDOException $e) {
-        setAlert('danger', 'Gagal menghapus data siswa!');
+    $id = (int)$_GET['id'];
+    
+    if ($id > 0) {
+        try {
+            // Get student name before deletion
+            $stmt = $pdo->prepare("SELECT nama FROM siswa WHERE id = ?");
+            $stmt->execute([$id]);
+            $nama_siswa = $stmt->fetchColumn();
+            
+            if ($nama_siswa) {
+                // Start transaction
+                $pdo->beginTransaction();
+                
+                // Delete penilaian first (foreign key constraint)
+                $stmt = $pdo->prepare("DELETE FROM penilaian WHERE siswa_id = ?");
+                $stmt->execute([$id]);
+                
+                // Delete hasil_perhitungan if exists
+                $stmt = $pdo->prepare("DELETE FROM hasil_perhitungan WHERE siswa_id = ?");
+                $stmt->execute([$id]);
+                
+                // Delete siswa
+                $stmt = $pdo->prepare("DELETE FROM siswa WHERE id = ?");
+                $stmt->execute([$id]);
+                
+                $pdo->commit();
+                setAlert('success', "Data siswa \"" . htmlspecialchars($nama_siswa) . "\" berhasil dihapus beserta semua data terkait!");
+            } else {
+                setAlert('danger', 'Data siswa tidak ditemukan!');
+            }
+        } catch (PDOException $e) {
+            $pdo->rollBack();
+            setAlert('danger', 'Gagal menghapus data siswa!');
+        }
+    } else {
+        setAlert('danger', 'ID siswa tidak valid!');
     }
+    
+    // Redirect to clean URL
     header('Location: index.php');
     exit();
 }
 
 // Handle status toggle
 if (isset($_GET['action']) && $_GET['action'] === 'toggle_status' && isset($_GET['id'])) {
-    try {
-        // Get current status
-        $stmt = $pdo->prepare("SELECT status FROM siswa WHERE id = ?");
-        $stmt->execute([$_GET['id']]);
-        $current_status = $stmt->fetchColumn();
-        
-        // Toggle status
-        $new_status = ($current_status === 'aktif') ? 'nonaktif' : 'aktif';
-        $stmt = $pdo->prepare("UPDATE siswa SET status = ? WHERE id = ?");
-        $stmt->execute([$new_status, $_GET['id']]);
-        
-        setAlert('success', 'Status siswa berhasil diubah!');
-    } catch (PDOException $e) {
-        setAlert('danger', 'Gagal mengubah status siswa!');
+    $id = (int)$_GET['id'];
+    
+    if ($id > 0) {
+        try {
+            // Get current status and student name
+            $stmt = $pdo->prepare("SELECT status, nama FROM siswa WHERE id = ?");
+            $stmt->execute([$id]);
+            $siswa_data = $stmt->fetch();
+            
+            if ($siswa_data) {
+                // Toggle status
+                $new_status = ($siswa_data['status'] === 'aktif') ? 'nonaktif' : 'aktif';
+                $stmt = $pdo->prepare("UPDATE siswa SET status = ? WHERE id = ?");
+                $stmt->execute([$new_status, $id]);
+                
+                $status_text = ($new_status === 'aktif') ? 'diaktifkan' : 'dinonaktifkan';
+                setAlert('success', "Status siswa \"" . htmlspecialchars($siswa_data['nama']) . "\" berhasil $status_text!");
+            } else {
+                setAlert('danger', 'Data siswa tidak ditemukan!');
+            }
+        } catch (PDOException $e) {
+            setAlert('danger', 'Gagal mengubah status siswa!');
+        }
+    } else {
+        setAlert('danger', 'ID siswa tidak valid!');
     }
+    
+    // Redirect to clean URL
     header('Location: index.php');
     exit();
 }
@@ -43,15 +88,32 @@ $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $limit = 10;
 $offset = ($page - 1) * $limit;
 
-// Search
+// Search and Filter
 $search = isset($_GET['search']) ? cleanInput($_GET['search']) : '';
-$where_clause = '';
+$status_filter = isset($_GET['status']) ? cleanInput($_GET['status']) : '';
+$tingkat_filter = isset($_GET['tingkat']) ? cleanInput($_GET['tingkat']) : '';
+
+$where_clauses = [];
 $params = [];
 
 if (!empty($search)) {
-    $where_clause = "WHERE nis LIKE ? OR nama LIKE ? OR kelas LIKE ?";
-    $params = ["%$search%", "%$search%", "%$search%"];
+    $where_clauses[] = "(nis LIKE ? OR nama LIKE ? OR kelas LIKE ?)";
+    $params[] = "%$search%";
+    $params[] = "%$search%";
+    $params[] = "%$search%";
 }
+
+if (!empty($status_filter)) {
+    $where_clauses[] = "status = ?";
+    $params[] = $status_filter;
+}
+
+if (!empty($tingkat_filter)) {
+    $where_clauses[] = "tingkat = ?";
+    $params[] = $tingkat_filter;
+}
+
+$where_clause = !empty($where_clauses) ? 'WHERE ' . implode(' AND ', $where_clauses) : '';
 
 // Get total records
 $stmt = $pdo->prepare("SELECT COUNT(*) FROM siswa $where_clause");
@@ -68,6 +130,19 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute($params);
 $siswa_list = $stmt->fetchAll();
+
+// Get statistics
+$stats = [];
+$stmt = $pdo->query("SELECT status, COUNT(*) as count FROM siswa GROUP BY status");
+while ($row = $stmt->fetch()) {
+    $stats[$row['status']] = $row['count'];
+}
+
+$stmt = $pdo->query("SELECT tingkat, COUNT(*) as count FROM siswa WHERE status = 'aktif' GROUP BY tingkat ORDER BY tingkat");
+$tingkat_stats = [];
+while ($row = $stmt->fetch()) {
+    $tingkat_stats[$row['tingkat']] = $row['count'];
+}
 
 // Breadcrumb
 $breadcrumb = generateBreadcrumb([
@@ -92,20 +167,92 @@ echo $breadcrumb;
     </div>
 </div>
 
-<!-- Search Form -->
+<!-- Statistics -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-title">
+                    <i class="bi bi-bar-chart"></i>
+                    Statistik Status
+                </h6>
+                <div class="row text-center">
+                    <div class="col-6">
+                        <h4 class="text-success"><?php echo $stats['aktif'] ?? 0; ?></h4>
+                        <small class="text-muted">Siswa Aktif</small>
+                    </div>
+                    <div class="col-6">
+                        <h4 class="text-warning"><?php echo $stats['nonaktif'] ?? 0; ?></h4>
+                        <small class="text-muted">Siswa Non-aktif</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-title">
+                    <i class="bi bi-layers"></i>
+                    Distribusi Tingkat (Aktif)
+                </h6>
+                <div class="row text-center">
+                    <div class="col-4">
+                        <h4 class="text-primary"><?php echo $tingkat_stats['7'] ?? 0; ?></h4>
+                        <small class="text-muted">Tingkat VII</small>
+                    </div>
+                    <div class="col-4">
+                        <h4 class="text-success"><?php echo $tingkat_stats['8'] ?? 0; ?></h4>
+                        <small class="text-muted">Tingkat VIII</small>
+                    </div>
+                    <div class="col-4">
+                        <h4 class="text-warning"><?php echo $tingkat_stats['9'] ?? 0; ?></h4>
+                        <small class="text-muted">Tingkat IX</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Search and Filter Form -->
 <div class="card mb-4">
     <div class="card-body">
         <form method="GET" action="" class="row g-3">
-            <div class="col-md-10">
+            <div class="col-md-6">
+                <label for="search" class="form-label">Cari Siswa</label>
                 <div class="input-group">
                     <span class="input-group-text"><i class="bi bi-search"></i></span>
-                    <input type="text" class="form-control" name="search"
+                    <input type="text" class="form-control" id="search" name="search"
                         placeholder="Cari berdasarkan NIS, nama, atau kelas..."
                         value="<?php echo htmlspecialchars($search); ?>">
                 </div>
             </div>
-            <div class="col-md-2">
-                <button type="submit" class="btn btn-outline-primary w-100">Cari</button>
+            <div class="col-md-3">
+                <label for="status" class="form-label">Filter Status</label>
+                <select class="form-select" id="status" name="status">
+                    <option value="">Semua Status</option>
+                    <option value="aktif" <?php echo $status_filter === 'aktif' ? 'selected' : ''; ?>>Aktif</option>
+                    <option value="nonaktif" <?php echo $status_filter === 'nonaktif' ? 'selected' : ''; ?>>Non-aktif
+                    </option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label for="tingkat" class="form-label">Filter Tingkat</label>
+                <select class="form-select" id="tingkat" name="tingkat">
+                    <option value="">Semua Tingkat</option>
+                    <option value="7" <?php echo $tingkat_filter === '7' ? 'selected' : ''; ?>>Tingkat VII</option>
+                    <option value="8" <?php echo $tingkat_filter === '8' ? 'selected' : ''; ?>>Tingkat VIII</option>
+                    <option value="9" <?php echo $tingkat_filter === '9' ? 'selected' : ''; ?>>Tingkat IX</option>
+                </select>
+            </div>
+            <div class="col-12">
+                <button type="submit" class="btn btn-outline-primary">
+                    <i class="bi bi-funnel"></i> Filter
+                </button>
+                <a href="index.php" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-clockwise"></i> Reset
+                </a>
             </div>
         </form>
     </div>
@@ -118,6 +265,9 @@ echo $breadcrumb;
             <i class="bi bi-table"></i>
             Daftar Siswa
             <span class="badge bg-secondary"><?php echo number_format($total_records); ?> data</span>
+            <?php if (!empty($search) || !empty($status_filter) || !empty($tingkat_filter)): ?>
+            <span class="badge bg-info">Filter Aktif</span>
+            <?php endif; ?>
         </h6>
     </div>
     <div class="card-body p-0">
@@ -125,31 +275,32 @@ echo $breadcrumb;
         <div class="text-center py-5">
             <i class="bi bi-inbox text-muted" style="font-size: 3rem;"></i>
             <h6 class="text-muted mt-2">Tidak ada data siswa</h6>
-            <?php if (empty($search)): ?>
+            <?php if (empty($search) && empty($status_filter) && empty($tingkat_filter)): ?>
             <p class="text-muted">Silakan tambah data siswa terlebih dahulu.</p>
             <a href="tambah.php" class="btn btn-primary">
                 <i class="bi bi-person-plus"></i> Tambah Siswa
             </a>
             <?php else: ?>
-            <p class="text-muted">Tidak ditemukan data siswa dengan kata kunci
-                "<?php echo htmlspecialchars($search); ?>"</p>
-            <a href="index.php" class="btn btn-outline-secondary">Reset Pencarian</a>
+            <p class="text-muted">Tidak ditemukan data siswa dengan filter yang diterapkan</p>
+            <a href="index.php" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-clockwise"></i> Reset Filter
+            </a>
             <?php endif; ?>
         </div>
         <?php else: ?>
         <div class="table-responsive">
             <table class="table table-hover mb-0">
-                <thead>
+                <thead class="table-light">
                     <tr>
                         <th width="5%">No</th>
                         <th>NIS</th>
                         <th>Nama Siswa</th>
                         <th>Kelas</th>
+                        <th>Tingkat</th>
                         <th>Jenis Kelamin</th>
                         <th>No. HP</th>
-                        <th>Tahun Ajaran</th>
                         <th>Status</th>
-                        <th width="15%">Aksi</th>
+                        <th width="18%">Aksi</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -162,18 +313,22 @@ echo $breadcrumb;
                         <td>
                             <span class="fw-semibold"><?php echo htmlspecialchars($siswa['nis']); ?></span>
                         </td>
-                        <td><?php echo htmlspecialchars($siswa['nama']); ?></td>
+                        <td>
+                            <strong><?php echo htmlspecialchars($siswa['nama']); ?></strong>
+                        </td>
                         <td>
                             <span class="badge bg-info"><?php echo htmlspecialchars($siswa['kelas']); ?></span>
                         </td>
                         <td>
+                            <span class="badge bg-secondary">T<?php echo $siswa['tingkat']; ?></span>
+                        </td>
+                        <td>
                             <span
                                 class="badge <?php echo $siswa['jenis_kelamin'] === 'L' ? 'bg-primary' : 'bg-danger'; ?>">
-                                <?php echo $siswa['jenis_kelamin'] === 'L' ? 'Laki-laki' : 'Perempuan'; ?>
+                                <?php echo $siswa['jenis_kelamin'] === 'L' ? 'L' : 'P'; ?>
                             </span>
                         </td>
                         <td><?php echo htmlspecialchars($siswa['no_hp'] ?: '-'); ?></td>
-                        <td><?php echo htmlspecialchars($siswa['tahun_ajaran']); ?></td>
                         <td>
                             <span
                                 class="badge <?php echo $siswa['status'] === 'aktif' ? 'bg-success' : 'bg-warning'; ?>">
@@ -183,22 +338,23 @@ echo $breadcrumb;
                         <td>
                             <div class="btn-group btn-group-sm" role="group">
                                 <a href="detail.php?id=<?php echo $siswa['id']; ?>" class="btn btn-outline-info"
-                                    title="Detail">
+                                    title="Detail" data-bs-toggle="tooltip">
                                     <i class="bi bi-eye"></i>
                                 </a>
                                 <a href="edit.php?id=<?php echo $siswa['id']; ?>" class="btn btn-outline-warning"
-                                    title="Edit">
+                                    title="Edit" data-bs-toggle="tooltip">
                                     <i class="bi bi-pencil"></i>
                                 </a>
-                                <a href="?action=toggle_status&id=<?php echo $siswa['id']; ?>"
+                                <a href="javascript:void(0)"
+                                    onclick="toggleStatus(<?php echo $siswa['id']; ?>, '<?php echo $siswa['status']; ?>', '<?php echo htmlspecialchars($siswa['nama']); ?>')"
                                     class="btn btn-outline-secondary"
                                     title="<?php echo $siswa['status'] === 'aktif' ? 'Nonaktifkan' : 'Aktifkan'; ?>"
-                                    onclick="return confirm('Yakin ingin mengubah status siswa ini?')">
+                                    data-bs-toggle="tooltip">
                                     <i class="bi bi-arrow-repeat"></i>
                                 </a>
-                                <a href="?action=delete&id=<?php echo $siswa['id']; ?>" class="btn btn-outline-danger"
-                                    title="Hapus"
-                                    onclick="return confirmDelete('Yakin ingin menghapus data siswa ini? Semua data penilaian akan ikut terhapus!')">
+                                <a href="javascript:void(0)"
+                                    onclick="confirmDelete(<?php echo $siswa['id']; ?>, '<?php echo htmlspecialchars($siswa['nama']); ?>')"
+                                    class="btn btn-outline-danger" title="Hapus" data-bs-toggle="tooltip">
                                     <i class="bi bi-trash"></i>
                                 </a>
                             </div>
@@ -216,7 +372,7 @@ echo $breadcrumb;
                 <ul class="pagination justify-content-center mb-0">
                     <li class="page-item <?php echo $page <= 1 ? 'disabled' : ''; ?>">
                         <a class="page-link"
-                            href="?page=<?php echo $page - 1; ?><?php echo $search ? '&search=' . urlencode($search) : ''; ?>">
+                            href="?page=<?php echo $page - 1; ?><?php echo buildQueryString(['search' => $search, 'status' => $status_filter, 'tingkat' => $tingkat_filter]); ?>">
                             <i class="bi bi-chevron-left"></i>
                         </a>
                     </li>
@@ -224,7 +380,7 @@ echo $breadcrumb;
                     <?php for ($i = 1; $i <= $total_pages; $i++): ?>
                     <li class="page-item <?php echo $i === $page ? 'active' : ''; ?>">
                         <a class="page-link"
-                            href="?page=<?php echo $i; ?><?php echo $search ? '&search=' . urlencode($search) : ''; ?>">
+                            href="?page=<?php echo $i; ?><?php echo buildQueryString(['search' => $search, 'status' => $status_filter, 'tingkat' => $tingkat_filter]); ?>">
                             <?php echo $i; ?>
                         </a>
                     </li>
@@ -232,7 +388,7 @@ echo $breadcrumb;
 
                     <li class="page-item <?php echo $page >= $total_pages ? 'disabled' : ''; ?>">
                         <a class="page-link"
-                            href="?page=<?php echo $page + 1; ?><?php echo $search ? '&search=' . urlencode($search) : ''; ?>">
+                            href="?page=<?php echo $page + 1; ?><?php echo buildQueryString(['search' => $search, 'status' => $status_filter, 'tingkat' => $tingkat_filter]); ?>">
                             <i class="bi bi-chevron-right"></i>
                         </a>
                     </li>
@@ -243,5 +399,48 @@ echo $breadcrumb;
         <?php endif; ?>
     </div>
 </div>
+
+<!-- JavaScript Functions -->
+<script>
+// Initialize tooltips
+document.addEventListener('DOMContentLoaded', function() {
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function(tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+});
+
+// Confirm delete function
+function confirmDelete(id, nama) {
+    if (confirm(
+            `Yakin ingin menghapus data siswa "${nama}"?\n\nSemua data penilaian dan hasil perhitungan akan ikut terhapus!`
+        )) {
+        window.location.href = `index.php?action=delete&id=${id}`;
+    }
+}
+
+// Toggle status function
+function toggleStatus(id, currentStatus, nama) {
+    const newStatus = currentStatus === 'aktif' ? 'nonaktif' : 'aktif';
+    const action = newStatus === 'aktif' ? 'mengaktifkan' : 'menonaktifkan';
+
+    if (confirm(`Yakin ingin ${action} siswa "${nama}"?`)) {
+        window.location.href = `index.php?action=toggle_status&id=${id}`;
+    }
+}
+
+// Build query string helper (PHP function equivalent in JS)
+<?php
+function buildQueryString($params) {
+    $queryParts = [];
+    foreach ($params as $key => $value) {
+        if (!empty($value)) {
+            $queryParts[] = $key . '=' . urlencode($value);
+        }
+    }
+    return !empty($queryParts) ? '&' . implode('&', $queryParts) : '';
+}
+?>
+</script>
 
 <?php require_once '../../includes/footer.php'; ?>

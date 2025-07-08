@@ -24,9 +24,10 @@ if (!$siswa) {
     exit();
 }
 
-// Get penilaian data
+// Get penilaian data with correct field names
 $stmt = $pdo->prepare("
-    SELECT k.kode, k.nama as kriteria_nama, k.bobot, k.jenis, p.nilai, p.keterangan as penilaian_keterangan
+    SELECT k.kode, k.nama as kriteria_nama, k.bobot, k.jenis, 
+           p.nilai_kategori, p.nilai_numerik
     FROM kriteria k 
     LEFT JOIN penilaian p ON k.id = p.kriteria_id AND p.siswa_id = ?
     ORDER BY k.kode
@@ -48,7 +49,7 @@ $hasil_terakhir = $stmt->fetch();
 $total_kriteria = count($penilaian_data);
 $kriteria_dinilai = 0;
 foreach ($penilaian_data as $p) {
-    if ($p['nilai'] !== null && $p['nilai'] > 0) {
+    if ($p['nilai_numerik'] !== null && $p['nilai_numerik'] > 0) {
         $kriteria_dinilai++;
     }
 }
@@ -117,6 +118,10 @@ echo $breadcrumb;
                         <td>: <span class="badge bg-info"><?php echo htmlspecialchars($siswa['kelas']); ?></span></td>
                     </tr>
                     <tr>
+                        <td><strong>Tingkat</strong></td>
+                        <td>: <span class="badge bg-secondary">Tingkat <?php echo $siswa['tingkat']; ?></span></td>
+                    </tr>
+                    <tr>
                         <td><strong>Jenis Kelamin</strong></td>
                         <td>: <?php echo $siswa['jenis_kelamin'] === 'L' ? 'Laki-laki' : 'Perempuan'; ?></td>
                     </tr>
@@ -183,7 +188,8 @@ echo $breadcrumb;
                                 <th>Kriteria</th>
                                 <th>Bobot</th>
                                 <th>Jenis</th>
-                                <th>Nilai</th>
+                                <th>Nilai Kategori</th>
+                                <th>Nilai Numerik</th>
                                 <th>Status</th>
                             </tr>
                         </thead>
@@ -202,15 +208,23 @@ echo $breadcrumb;
                                     </span>
                                 </td>
                                 <td>
-                                    <?php if ($p['nilai'] !== null && $p['nilai'] > 0): ?>
+                                    <?php if ($p['nilai_kategori'] !== null): ?>
                                     <span
-                                        class="fw-semibold text-primary"><?php echo formatNumber($p['nilai'], 2); ?></span>
+                                        class="fw-semibold text-info"><?php echo htmlspecialchars($p['nilai_kategori']); ?></span>
                                     <?php else: ?>
                                     <span class="text-muted">-</span>
                                     <?php endif; ?>
                                 </td>
                                 <td>
-                                    <?php if ($p['nilai'] !== null && $p['nilai'] > 0): ?>
+                                    <?php if ($p['nilai_numerik'] !== null && $p['nilai_numerik'] > 0): ?>
+                                    <span
+                                        class="fw-semibold text-primary"><?php echo formatNumber($p['nilai_numerik'], 2); ?></span>
+                                    <?php else: ?>
+                                    <span class="text-muted">-</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <?php if ($p['nilai_numerik'] !== null && $p['nilai_numerik'] > 0): ?>
                                     <i class="bi bi-check-circle-fill text-success"></i>
                                     <?php else: ?>
                                     <i class="bi bi-x-circle-fill text-danger"></i>
@@ -257,10 +271,16 @@ echo $breadcrumb;
                     <div class="col-md-3">
                         <div class="text-center">
                             <div
-                                class="display-1 <?php echo $hasil_terakhir['ranking'] <= 3 ? 'text-warning' : 'text-muted'; ?>">
-                                <?php echo $hasil_terakhir['ranking']; ?>
+                                class="display-1 <?php echo $hasil_terakhir['ranking_global'] <= 10 ? 'text-warning' : 'text-muted'; ?>">
+                                <?php echo $hasil_terakhir['ranking_global']; ?>
                             </div>
-                            <h6 class="text-muted">Ranking</h6>
+                            <h6 class="text-muted">Ranking Global</h6>
+                            <?php if (isset($hasil_terakhir['ranking_tingkat'])): ?>
+                            <div class="mt-2">
+                                <div class="h4 text-info"><?php echo $hasil_terakhir['ranking_tingkat']; ?></div>
+                                <small class="text-muted">Ranking Tingkat</small>
+                            </div>
+                            <?php endif; ?>
                         </div>
                     </div>
                     <div class="col-md-9">
@@ -288,8 +308,8 @@ echo $breadcrumb;
                                     <div class="card-body text-center">
                                         <h6 class="card-title">Status</h6>
                                         <span
-                                            class="badge <?php echo $hasil_terakhir['ranking'] <= 5 ? 'bg-success' : 'bg-secondary'; ?> fs-6">
-                                            <?php echo $hasil_terakhir['ranking'] <= 5 ? 'Rekomendasi' : 'Tidak Direkomendasikan'; ?>
+                                            class="badge <?php echo $hasil_terakhir['ranking_global'] <= 10 ? 'bg-success' : 'bg-secondary'; ?> fs-6">
+                                            <?php echo $hasil_terakhir['ranking_global'] <= 10 ? 'Penerima Beasiswa' : 'Tidak Terpilih'; ?>
                                         </span>
                                     </div>
                                 </div>
@@ -302,10 +322,12 @@ echo $breadcrumb;
                                     <td width="30%"><strong>Tanggal Perhitungan:</strong></td>
                                     <td><?php echo date('d F Y', strtotime($hasil_terakhir['tanggal_hitung'])); ?></td>
                                 </tr>
+                                <?php if (isset($hasil_terakhir['tahun_ajaran'])): ?>
                                 <tr>
                                     <td><strong>Tahun Ajaran:</strong></td>
                                     <td><?php echo htmlspecialchars($hasil_terakhir['tahun_ajaran']); ?></td>
                                 </tr>
+                                <?php endif; ?>
                             </table>
                         </div>
                     </div>
