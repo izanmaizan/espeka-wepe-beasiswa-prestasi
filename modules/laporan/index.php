@@ -41,6 +41,8 @@ echo $breadcrumb;
         <i class="bi bi-file-earmark-text"></i>
         Laporan & Hasil Beasiswa Prestasi
     </h1>
+
+    <!-- TOMBOL EXPORT YANG DIOPTIMALKAN -->
     <div class="btn-toolbar mb-2 mb-md-0">
         <div class="btn-group me-2">
             <?php if (hasRole('admin')): ?>
@@ -49,18 +51,49 @@ echo $breadcrumb;
                 Hitung Ulang
             </a>
             <?php endif; ?>
+
             <?php if (!empty($hasil_perhitungan)): ?>
-            <button onclick="window.print()" class="btn btn-outline-primary">
+            <!-- Tombol Cetak PDF -->
+            <a href="export.php?view=<?php echo $view_mode; ?>&tingkat=<?php echo $tingkat_filter; ?>&format=pdf"
+                class="btn btn-outline-primary" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"
+                title="Cetak Laporan PDF Resmi">
                 <i class="bi bi-printer"></i>
                 Cetak
-            </button>
-            <a href="export.php?view=<?php echo $view_mode; ?>&tingkat=<?php echo $tingkat_filter; ?>"
-                class="btn btn-outline-success" target="_blank">
+            </a>
+
+            <!-- Tombol Export Excel -->
+            <a href="export.php?view=<?php echo $view_mode; ?>&tingkat=<?php echo $tingkat_filter; ?>&format=excel"
+                class="btn btn-outline-success" data-bs-toggle="tooltip" data-bs-placement="bottom"
+                title="Export Excel dengan Styling">
                 <i class="bi bi-file-earmark-excel"></i>
                 Export Excel
             </a>
             <?php endif; ?>
         </div>
+
+        <!-- Status Export Info -->
+        <?php if (!empty($hasil_perhitungan)): ?>
+        <div class="btn-group">
+            <small class="text-muted align-self-center ms-3">
+                <i class="bi bi-info-circle"></i>
+                Export:
+                <strong>
+                    <?php 
+                if ($view_mode === 'global') {
+                    echo 'Top 10 Global (' . count($hasil_perhitungan) . ' siswa)';
+                } else {
+                    if ($tingkat_filter) {
+                        $tingkat_name = $tingkat_filter === '7' ? 'VII' : ($tingkat_filter === '8' ? 'VIII' : 'IX');
+                        echo "Kelas $tingkat_name (" . count($hasil_perhitungan) . ' siswa)';
+                    } else {
+                        echo 'Semua Tingkat (' . count($hasil_perhitungan) . ' siswa)';
+                    }
+                }
+                ?>
+                </strong>
+            </small>
+        </div>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -179,6 +212,7 @@ echo $breadcrumb;
         </div>
     </div>
 </div>
+
 
 <?php if ($view_mode === 'global'): ?>
 <!-- Top 10 Global View -->
@@ -521,6 +555,148 @@ echo $breadcrumb;
         </div>
     </div>
 </div>
+
+<!-- CSS Optimized -->
+<style>
+.btn-toolbar .text-muted {
+    font-size: 0.85rem;
+}
+
+.card {
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 0.25rem 0.5rem rgba(0, 0, 0, 0.1);
+}
+
+.btn.loading {
+    pointer-events: none;
+}
+
+.btn.loading i::before {
+    content: "\F53F";
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+.dropdown-menu {
+    border-radius: 0.375rem;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    min-width: 200px;
+}
+
+.dropdown-header {
+    color: #6c757d;
+    font-size: 0.775rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.dropdown-item {
+    transition: all 0.15s ease-in-out;
+}
+
+.dropdown-item:hover {
+    background-color: #f8f9fa;
+    transform: translateX(3px);
+}
+
+.dropdown-item i {
+    width: 20px;
+    text-align: center;
+    margin-right: 8px;
+}
+
+@media (max-width: 768px) {
+    .btn-group {
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .btn-group .btn {
+        border-radius: 0.375rem !important;
+        margin-bottom: 5px;
+    }
+
+    .dropdown-menu {
+        position: static !important;
+        transform: none !important;
+        width: 100%;
+        box-shadow: none;
+        border: 1px solid #dee2e6;
+        margin-top: 5px;
+    }
+}
+</style>
+
+<!-- JavaScript Optimized -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize tooltips
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function(tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+
+    // Track export clicks dan loading animation
+    const exportLinks = document.querySelectorAll('a[href*="export.php"]');
+    exportLinks.forEach(link => {
+        link.addEventListener('click', function(e) {
+            const format = this.href.includes('format=pdf') ? 'PDF' :
+                this.href.includes('format=excel') ? 'Excel' : 'CSV';
+            const view = this.href.includes('view=global') ? 'Global' : 'Tingkat';
+
+            // Add loading state
+            this.classList.add('loading');
+            const icon = this.querySelector('i');
+            const originalClass = icon.className;
+
+            // Show loading animation
+            setTimeout(() => {
+                this.classList.remove('loading');
+                icon.className = originalClass;
+            }, 2000);
+
+            // Analytics tracking
+            console.log(`Export: ${format} - ${view}`);
+
+            // For PDF, open in new tab
+            if (format === 'PDF') {
+                this.target = '_blank';
+            }
+        });
+    });
+
+    // Keyboard shortcuts untuk export
+    document.addEventListener('keydown', function(e) {
+        // Ctrl+P untuk PDF export
+        if (e.ctrlKey && e.key === 'p') {
+            e.preventDefault();
+            const pdfLink = document.querySelector('a[href*="format=pdf"]');
+            if (pdfLink) pdfLink.click();
+        }
+
+        // Ctrl+E untuk Excel export
+        if (e.ctrlKey && e.key === 'e') {
+            e.preventDefault();
+            const excelLink = document.querySelector('a[href*="format=excel"]');
+            if (excelLink) excelLink.click();
+        }
+    });
+});
+</script>
 
 <!-- Print Styles -->
 <style media="print">

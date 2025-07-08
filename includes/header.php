@@ -44,6 +44,41 @@ function isActiveSection($section) {
         font-weight: bold;
     }
 
+    /* Fix Navbar Dropdown Color */
+    .navbar-dark .navbar-nav .nav-link {
+        color: rgba(255, 255, 255, 0.9) !important;
+        transition: color 0.15s ease-in-out;
+    }
+
+    .navbar-dark .navbar-nav .nav-link:hover,
+    .navbar-dark .navbar-nav .nav-link:focus {
+        color: rgba(255, 255, 255, 1) !important;
+    }
+
+    .navbar-dark .navbar-nav .nav-link.dropdown-toggle {
+        color: rgba(255, 255, 255, 0.9) !important;
+    }
+
+    .navbar-dark .navbar-nav .nav-link.dropdown-toggle:hover,
+    .navbar-dark .navbar-nav .nav-link.dropdown-toggle:focus {
+        color: rgba(255, 255, 255, 1) !important;
+    }
+
+    .navbar-dark .navbar-nav .nav-link.dropdown-toggle::after {
+        border-top-color: rgba(255, 255, 255, 0.9);
+    }
+
+    /* Navbar User Info Styling */
+    .navbar-nav .dropdown-toggle i {
+        margin-right: 0.5rem;
+        font-size: 1.1em;
+    }
+
+    .navbar-nav .badge {
+        font-size: 0.7em;
+        padding: 0.35em 0.5em;
+    }
+
     .sidebar {
         min-height: calc(100vh - 56px);
         background-color: #f8f9fa;
@@ -129,12 +164,38 @@ function isActiveSection($section) {
     .nav-section-header.active {
         color: #0d6efd;
     }
+
+    /* Dropdown Menu Styling */
+    .dropdown-menu {
+        border-radius: 0.5rem;
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+        border: 1px solid rgba(0, 0, 0, 0.1);
+    }
+
+    .dropdown-item-text {
+        font-size: 0.85rem;
+    }
+
+    .dropdown-divider {
+        margin: 0.5rem 0;
+    }
+
+    /* Mobile navbar fixes */
+    @media (max-width: 768px) {
+        .navbar-nav {
+            padding: 1rem 0;
+        }
+
+        .navbar-nav .nav-link {
+            padding: 0.75rem 1rem;
+        }
+    }
     </style>
 </head>
 
 <body class="bg-light">
     <!-- Navbar -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm">
         <div class="container-fluid">
             <a class="navbar-brand" href="../dashboard/index.php">
                 <i class="bi bi-mortarboard"></i>
@@ -148,7 +209,8 @@ function isActiveSection($section) {
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
+                            aria-expanded="false">
                             <i class="bi bi-person-circle"></i>
                             <?php echo htmlspecialchars($_SESSION['nama'] ?? 'User'); ?>
                             <span
@@ -157,18 +219,26 @@ function isActiveSection($section) {
                             </span>
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
-                            <li><span class="dropdown-item-text small text-muted">
+                            <li>
+                                <span class="dropdown-item-text small text-muted">
+                                    <i class="bi bi-person"></i>
                                     Role: <?php echo ucfirst(str_replace('_', ' ', $_SESSION['role'] ?? '')); ?>
-                                </span></li>
-                            <li><span class="dropdown-item-text small text-muted">
+                                </span>
+                            </li>
+                            <li>
+                                <span class="dropdown-item-text small text-muted">
+                                    <i class="bi bi-clock"></i>
                                     Login: <?php echo date('d/m/Y H:i'); ?>
-                                </span></li>
+                                </span>
+                            </li>
                             <li>
                                 <hr class="dropdown-divider">
                             </li>
-                            <li><a class="dropdown-item" href="../auth/logout.php">
+                            <li>
+                                <a class="dropdown-item text-danger" href="../auth/logout.php">
                                     <i class="bi bi-box-arrow-right"></i> Logout
-                                </a></li>
+                                </a>
+                            </li>
                         </ul>
                     </li>
                 </ul>
