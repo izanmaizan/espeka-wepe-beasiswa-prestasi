@@ -1,4 +1,7 @@
 <?php
+// Start output buffering
+ob_start();
+
 $page_title = 'Edit Siswa';
 require_once '../../includes/header.php';
 
@@ -8,7 +11,8 @@ requireRole('admin');
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
 if (!$id) {
-    setAlert('danger', 'ID siswa tidak valid!');
+    ob_end_clean();
+    $_SESSION['alert'] = ['type' => 'danger', 'message' => 'ID siswa tidak valid!'];
     header('Location: index.php');
     exit();
 }
@@ -19,7 +23,8 @@ $stmt->execute([$id]);
 $siswa = $stmt->fetch();
 
 if (!$siswa) {
-    setAlert('danger', 'Data siswa tidak ditemukan!');
+    ob_end_clean();
+    $_SESSION['alert'] = ['type' => 'danger', 'message' => 'Data siswa tidak ditemukan!'];
     header('Location: index.php');
     exit();
 }
@@ -28,6 +33,9 @@ $errors = [];
 
 // Proses form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Clean output buffer
+    ob_clean();
+    
     $nis = cleanInput($_POST['nis']);
     $nama = cleanInput($_POST['nama']);
     $kelas = cleanInput($_POST['kelas']);
@@ -37,87 +45,107 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $tahun_ajaran = cleanInput($_POST['tahun_ajaran']);
     $status = cleanInput($_POST['status']);
     
-    // Validasi
-    if (empty($nis)) {
-        $errors['nis'] = 'NIS harus diisi!';
-    } elseif (!preg_match('/^[0-9]+$/', $nis)) {
-        $errors['nis'] = 'NIS hanya boleh berisi angka!';
-    } else {
+    try {
+        // Validasi
+        if (empty($nis)) {
+            throw new Exception('NIS harus diisi!');
+        } elseif (!preg_match('/^[0-9]+$/', $nis)) {
+            throw new Exception('NIS hanya boleh berisi angka!');
+        }
+        
         // Cek duplikasi NIS (kecuali untuk siswa yang sedang diedit)
         $stmt = $pdo->prepare("SELECT COUNT(*) FROM siswa WHERE nis = ? AND id != ?");
         $stmt->execute([$nis, $id]);
         if ($stmt->fetchColumn() > 0) {
-            $errors['nis'] = 'NIS sudah terdaftar!';
+            throw new Exception('NIS sudah terdaftar!');
         }
-    }
-    
-    if (empty($nama)) {
-        $errors['nama'] = 'Nama harus diisi!';
-    } elseif (strlen($nama) < 3) {
-        $errors['nama'] = 'Nama minimal 3 karakter!';
-    }
-    
-    if (empty($kelas)) {
-        $errors['kelas'] = 'Kelas harus diisi!';
-    }
-    
-    if (empty($jenis_kelamin) || !in_array($jenis_kelamin, ['L', 'P'])) {
-        $errors['jenis_kelamin'] = 'Jenis kelamin harus dipilih!';
-    }
-    
-    if (empty($tahun_ajaran)) {
-        $errors['tahun_ajaran'] = 'Tahun ajaran harus diisi!';
-    }
-    
-    if (empty($status) || !in_array($status, ['aktif', 'nonaktif'])) {
-        $errors['status'] = 'Status harus dipilih!';
-    }
-    
-    if (!empty($no_hp) && !preg_match('/^[0-9+\-\s]+$/', $no_hp)) {
-        $errors['no_hp'] = 'Format nomor HP tidak valid!';
-    }
-    
-    // Jika tidak ada error, update data
-    if (empty($errors)) {
-        try {
-            $stmt = $pdo->prepare("
-                UPDATE siswa 
-                SET nis = ?, nama = ?, kelas = ?, jenis_kelamin = ?, 
-                    alamat = ?, no_hp = ?, tahun_ajaran = ?, status = ? 
-                WHERE id = ?
-            ");
-            $stmt->execute([$nis, $nama, $kelas, $jenis_kelamin, $alamat, $no_hp, $tahun_ajaran, $status, $id]);
-            
-            setAlert('success', 'Data siswa berhasil diperbarui!');
-            header('Location: index.php');
-            exit();
-        } catch (PDOException $e) {
-            setAlert('danger', 'Gagal memperbarui data siswa!');
+        
+        if (empty($nama)) {
+            throw new Exception('Nama harus diisi!');
+        } elseif (strlen($nama) < 3) {
+            throw new Exception('Nama minimal 3 karakter!');
         }
+        
+        if (empty($kelas)) {
+            throw new Exception('Kelas harus diisi!');
+        }
+        
+        if (empty($jenis_kelamin) || !in_array($jenis_kelamin, ['L', 'P'])) {
+            throw new Exception('Jenis kelamin harus dipilih!');
+        }
+        
+        if (empty($tahun_ajaran)) {
+            throw new Exception('Tahun ajaran harus diisi!');
+        }
+        
+        if (empty($status) || !in_array($status, ['aktif', 'nonaktif'])) {
+            throw new Exception('Status harus dipilih!');
+        }
+        
+        if (!empty($no_hp) && !preg_match('/^[0-9+\-\s]+$/', $no_hp)) {
+            throw new Exception('Format nomor HP tidak valid!');
+        }
+        
+        // Update data
+        $stmt = $pdo->prepare("
+            UPDATE siswa 
+            SET nis = ?, nama = ?, kelas = ?, jenis_kelamin = ?, 
+                alamat = ?, no_hp = ?, tahun_ajaran = ?, status = ? 
+            WHERE id = ?
+        ");
+        
+        if ($stmt->execute([$nis, $nama, $kelas, $jenis_kelamin, $alamat, $no_hp, $tahun_ajaran, $status, $id])) {
+            $_SESSION['alert'] = [
+                'type' => 'success', 
+                'message' => "✅ Data siswa \"$nama\" berhasil diperbarui!"
+            ];
+        } else {
+            throw new Exception('Gagal memperbarui data ke database!');
+        }
+        
+    } catch (Exception $e) {
+        $_SESSION['alert'] = [
+            'type' => 'danger', 
+            'message' => 'Gagal memperbarui siswa: ' . $e->getMessage()
+        ];
     }
-} else {
-    // Set default values from database
-    $nis = $siswa['nis'];
-    $nama = $siswa['nama'];
-    $kelas = $siswa['kelas'];
-    $jenis_kelamin = $siswa['jenis_kelamin'];
-    $alamat = $siswa['alamat'];
-    $no_hp = $siswa['no_hp'];
-    $tahun_ajaran = $siswa['tahun_ajaran'];
-    $status = $siswa['status'];
+    
+    // Clean redirect
+    ob_end_clean();
+    ?>
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <script>
+    window.location.href = 'index.php';
+    </script>
+</head>
+
+<body>
+    <p>Redirecting...</p>
+    <script>
+    if (!window.location.href.includes('index.php')) {
+        window.location.replace('index.php');
+    }
+    </script>
+</body>
+
+</html>
+<?php
+    exit();
 }
 
-// Override with POST data if form was submitted with errors
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $nis = $_POST['nis'] ?? $nis;
-    $nama = $_POST['nama'] ?? $nama;
-    $kelas = $_POST['kelas'] ?? $kelas;
-    $jenis_kelamin = $_POST['jenis_kelamin'] ?? $jenis_kelamin;
-    $alamat = $_POST['alamat'] ?? $alamat;
-    $no_hp = $_POST['no_hp'] ?? $no_hp;
-    $tahun_ajaran = $_POST['tahun_ajaran'] ?? $tahun_ajaran;
-    $status = $_POST['status'] ?? $status;
-}
+// Set default values from database
+$nis = $siswa['nis'];
+$nama = $siswa['nama'];
+$kelas = $siswa['kelas'];
+$jenis_kelamin = $siswa['jenis_kelamin'];
+$alamat = $siswa['alamat'];
+$no_hp = $siswa['no_hp'];
+$tahun_ajaran = $siswa['tahun_ajaran'];
+$status = $siswa['status'];
 
 // Breadcrumb
 $breadcrumb = generateBreadcrumb([
@@ -143,6 +171,19 @@ echo $breadcrumb;
     </div>
 </div>
 
+<!-- Alert Messages -->
+<?php 
+if (isset($_SESSION['alert'])) {
+    $alert = $_SESSION['alert'];
+    unset($_SESSION['alert']);
+    echo '<div class="alert alert-' . $alert['type'] . ' alert-dismissible fade show" role="alert">';
+    echo '<i class="bi bi-' . ($alert['type'] === 'success' ? 'check-circle' : 'exclamation-triangle') . '"></i> ';
+    echo $alert['message'];
+    echo '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+    echo '</div>';
+}
+?>
+
 <div class="row">
     <div class="col-md-8">
         <div class="card">
@@ -153,32 +194,22 @@ echo $breadcrumb;
                 </h6>
             </div>
             <div class="card-body">
-                <form method="POST" action="" novalidate>
+                <form method="POST" action="" id="formEditSiswa">
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label for="nis" class="form-label">
                                 NIS <span class="text-danger">*</span>
                             </label>
-                            <input type="text"
-                                class="form-control <?php echo isset($errors['nis']) ? 'is-invalid' : ''; ?>" id="nis"
-                                name="nis" value="<?php echo htmlspecialchars($nis); ?>"
-                                placeholder="Masukkan NIS siswa" required>
-                            <?php if (isset($errors['nis'])): ?>
-                            <div class="invalid-feedback"><?php echo $errors['nis']; ?></div>
-                            <?php endif; ?>
+                            <input type="text" class="form-control" id="nis" name="nis"
+                                value="<?php echo htmlspecialchars($nis); ?>" placeholder="Masukkan NIS siswa" required>
                         </div>
 
                         <div class="col-md-6 mb-3">
                             <label for="tahun_ajaran" class="form-label">
                                 Tahun Ajaran <span class="text-danger">*</span>
                             </label>
-                            <input type="text"
-                                class="form-control <?php echo isset($errors['tahun_ajaran']) ? 'is-invalid' : ''; ?>"
-                                id="tahun_ajaran" name="tahun_ajaran"
+                            <input type="text" class="form-control" id="tahun_ajaran" name="tahun_ajaran"
                                 value="<?php echo htmlspecialchars($tahun_ajaran); ?>" placeholder="2023/2024" required>
-                            <?php if (isset($errors['tahun_ajaran'])): ?>
-                            <div class="invalid-feedback"><?php echo $errors['tahun_ajaran']; ?></div>
-                            <?php endif; ?>
                         </div>
                     </div>
 
@@ -186,13 +217,9 @@ echo $breadcrumb;
                         <label for="nama" class="form-label">
                             Nama Lengkap <span class="text-danger">*</span>
                         </label>
-                        <input type="text"
-                            class="form-control <?php echo isset($errors['nama']) ? 'is-invalid' : ''; ?>" id="nama"
-                            name="nama" value="<?php echo htmlspecialchars($nama); ?>"
-                            placeholder="Masukkan nama lengkap siswa" required>
-                        <?php if (isset($errors['nama'])): ?>
-                        <div class="invalid-feedback"><?php echo $errors['nama']; ?></div>
-                        <?php endif; ?>
+                        <input type="text" class="form-control" id="nama" name="nama"
+                            value="<?php echo htmlspecialchars($nama); ?>" placeholder="Masukkan nama lengkap siswa"
+                            required>
                     </div>
 
                     <div class="row">
@@ -200,57 +227,68 @@ echo $breadcrumb;
                             <label for="kelas" class="form-label">
                                 Kelas <span class="text-danger">*</span>
                             </label>
-                            <select class="form-select <?php echo isset($errors['kelas']) ? 'is-invalid' : ''; ?>"
-                                id="kelas" name="kelas" required>
+                            <select class="form-select" id="kelas" name="kelas" required>
                                 <option value="">Pilih Kelas</option>
-                                <?php
-                                $kelas_options = ['7A', '7B', '7C', '7D', '8A', '8B', '8C', '8D', '9A', '9B', '9C', '9D'];
-                                foreach ($kelas_options as $kelas_opt):
-                                ?>
-                                <option value="<?php echo $kelas_opt; ?>"
-                                    <?php echo $kelas === $kelas_opt ? 'selected' : ''; ?>>
-                                    <?php echo $kelas_opt; ?>
-                                </option>
-                                <?php endforeach; ?>
+
+                                <optgroup label="Kelas VII">
+                                    <option value="VII.1" <?php echo $kelas === 'VII.1' ? 'selected' : ''; ?>>VII.1
+                                    </option>
+                                    <option value="VII.2" <?php echo $kelas === 'VII.2' ? 'selected' : ''; ?>>VII.2
+                                    </option>
+                                    <option value="VII.3" <?php echo $kelas === 'VII.3' ? 'selected' : ''; ?>>VII.3
+                                    </option>
+                                    <option value="VII.4" <?php echo $kelas === 'VII.4' ? 'selected' : ''; ?>>VII.4
+                                    </option>
+                                </optgroup>
+
+                                <optgroup label="Kelas VIII">
+                                    <option value="VIII.1" <?php echo $kelas === 'VIII.1' ? 'selected' : ''; ?>>VIII.1
+                                    </option>
+                                    <option value="VIII.2" <?php echo $kelas === 'VIII.2' ? 'selected' : ''; ?>>VIII.2
+                                    </option>
+                                    <option value="VIII.3" <?php echo $kelas === 'VIII.3' ? 'selected' : ''; ?>>VIII.3
+                                    </option>
+                                    <option value="VIII.4" <?php echo $kelas === 'VIII.4' ? 'selected' : ''; ?>>VIII.4
+                                    </option>
+                                </optgroup>
+
+                                <optgroup label="Kelas IX">
+                                    <option value="IX.1" <?php echo $kelas === 'IX.1' ? 'selected' : ''; ?>>IX.1
+                                    </option>
+                                    <option value="IX.2" <?php echo $kelas === 'IX.2' ? 'selected' : ''; ?>>IX.2
+                                    </option>
+                                    <option value="IX.3" <?php echo $kelas === 'IX.3' ? 'selected' : ''; ?>>IX.3
+                                    </option>
+                                    <option value="IX.4" <?php echo $kelas === 'IX.4' ? 'selected' : ''; ?>>IX.4
+                                    </option>
+                                </optgroup>
                             </select>
-                            <?php if (isset($errors['kelas'])): ?>
-                            <div class="invalid-feedback"><?php echo $errors['kelas']; ?></div>
-                            <?php endif; ?>
                         </div>
 
                         <div class="col-md-4 mb-3">
                             <label for="jenis_kelamin" class="form-label">
                                 Jenis Kelamin <span class="text-danger">*</span>
                             </label>
-                            <select
-                                class="form-select <?php echo isset($errors['jenis_kelamin']) ? 'is-invalid' : ''; ?>"
-                                id="jenis_kelamin" name="jenis_kelamin" required>
+                            <select class="form-select" id="jenis_kelamin" name="jenis_kelamin" required>
                                 <option value="">Pilih Jenis Kelamin</option>
                                 <option value="L" <?php echo $jenis_kelamin === 'L' ? 'selected' : ''; ?>>Laki-laki
                                 </option>
                                 <option value="P" <?php echo $jenis_kelamin === 'P' ? 'selected' : ''; ?>>Perempuan
                                 </option>
                             </select>
-                            <?php if (isset($errors['jenis_kelamin'])): ?>
-                            <div class="invalid-feedback"><?php echo $errors['jenis_kelamin']; ?></div>
-                            <?php endif; ?>
                         </div>
 
                         <div class="col-md-4 mb-3">
                             <label for="status" class="form-label">
                                 Status <span class="text-danger">*</span>
                             </label>
-                            <select class="form-select <?php echo isset($errors['status']) ? 'is-invalid' : ''; ?>"
-                                id="status" name="status" required>
+                            <select class="form-select" id="status" name="status" required>
                                 <option value="">Pilih Status</option>
                                 <option value="aktif" <?php echo $status === 'aktif' ? 'selected' : ''; ?>>Aktif
                                 </option>
                                 <option value="nonaktif" <?php echo $status === 'nonaktif' ? 'selected' : ''; ?>>
                                     Non-aktif</option>
                             </select>
-                            <?php if (isset($errors['status'])): ?>
-                            <div class="invalid-feedback"><?php echo $errors['status']; ?></div>
-                            <?php endif; ?>
                         </div>
                     </div>
 
@@ -262,13 +300,9 @@ echo $breadcrumb;
 
                     <div class="mb-3">
                         <label for="no_hp" class="form-label">Nomor HP</label>
-                        <input type="text"
-                            class="form-control <?php echo isset($errors['no_hp']) ? 'is-invalid' : ''; ?>" id="no_hp"
-                            name="no_hp" value="<?php echo htmlspecialchars($no_hp); ?>"
+                        <input type="text" class="form-control" id="no_hp" name="no_hp"
+                            value="<?php echo htmlspecialchars($no_hp); ?>"
                             placeholder="Masukkan nomor HP siswa/orangtua">
-                        <?php if (isset($errors['no_hp'])): ?>
-                        <div class="invalid-feedback"><?php echo $errors['no_hp']; ?></div>
-                        <?php endif; ?>
                     </div>
 
                     <div class="d-grid gap-2 d-md-flex justify-content-md-end">
@@ -276,7 +310,7 @@ echo $breadcrumb;
                             <i class="bi bi-x-circle"></i>
                             Batal
                         </a>
-                        <button type="submit" class="btn btn-primary">
+                        <button type="submit" class="btn btn-primary" id="btnUpdate">
                             <i class="bi bi-save"></i>
                             Update Data
                         </button>
@@ -324,10 +358,14 @@ echo $breadcrumb;
                 </table>
 
                 <?php
-                // Check if siswa has penilaian
-                $stmt = $pdo->prepare("SELECT COUNT(*) FROM penilaian WHERE siswa_id = ?");
-                $stmt->execute([$id]);
-                $has_penilaian = $stmt->fetchColumn() > 0;
+                try {
+                    // Check if siswa has penilaian
+                    $stmt = $pdo->prepare("SELECT COUNT(*) FROM penilaian WHERE siswa_id = ?");
+                    $stmt->execute([$id]);
+                    $has_penilaian = $stmt->fetchColumn() > 0;
+                } catch (Exception $e) {
+                    $has_penilaian = false;
+                }
                 ?>
 
                 <div class="alert alert-<?php echo $has_penilaian ? 'success' : 'warning'; ?> mt-3">
@@ -353,4 +391,33 @@ echo $breadcrumb;
     </div>
 </div>
 
-<?php require_once '../../includes/footer.php'; ?>
+<script>
+// Form submission handling
+document.getElementById('formEditSiswa').addEventListener('submit', function(e) {
+    const btnUpdate = document.getElementById('btnUpdate');
+    if (btnUpdate) {
+        btnUpdate.disabled = true;
+        btnUpdate.innerHTML = '<i class="bi bi-hourglass-split"></i> Memperbarui...';
+    }
+});
+
+// Auto-hide alerts
+document.addEventListener('DOMContentLoaded', function() {
+    const alerts = document.querySelectorAll('.alert');
+    alerts.forEach(function(alert) {
+        setTimeout(function() {
+            if (alert && alert.parentNode) {
+                const bsAlert = new bootstrap.Alert(alert);
+                if (bsAlert) {
+                    bsAlert.close();
+                }
+            }
+        }, 5000);
+    });
+});
+</script>
+
+<?php 
+ob_end_flush();
+require_once '../../includes/footer.php'; 
+?>

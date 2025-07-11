@@ -59,7 +59,14 @@ $page_title = 'Login';
 
     <style>
     body {
-        background-color: #f8f9fa;
+        /* Background image dengan overlay */
+        background-image:
+            linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)),
+            url('./smp.jpeg');
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        background-attachment: fixed;
         min-height: 100vh;
         display: flex;
         align-items: center;

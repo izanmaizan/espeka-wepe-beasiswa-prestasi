@@ -32,13 +32,20 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])
                 $stmt->execute([$id]);
                 
                 $pdo->commit();
-                setAlert('success', "Data siswa \"" . htmlspecialchars($nama_siswa) . "\" berhasil dihapus beserta semua data terkait!");
+                setAlert('success', "✅ Data siswa \"" . htmlspecialchars($nama_siswa) . "\" berhasil dihapus beserta semua data terkait!");
             } else {
                 setAlert('danger', 'Data siswa tidak ditemukan!');
             }
         } catch (PDOException $e) {
-            $pdo->rollBack();
-            setAlert('danger', 'Gagal menghapus data siswa!');
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            setAlert('danger', 'Gagal menghapus data siswa: ' . $e->getMessage());
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            setAlert('danger', 'Terjadi kesalahan: ' . $e->getMessage());
         }
     } else {
         setAlert('danger', 'ID siswa tidak valid!');
@@ -67,12 +74,12 @@ if (isset($_GET['action']) && $_GET['action'] === 'toggle_status' && isset($_GET
                 $stmt->execute([$new_status, $id]);
                 
                 $status_text = ($new_status === 'aktif') ? 'diaktifkan' : 'dinonaktifkan';
-                setAlert('success', "Status siswa \"" . htmlspecialchars($siswa_data['nama']) . "\" berhasil $status_text!");
+                setAlert('success', "✅ Status siswa \"" . htmlspecialchars($siswa_data['nama']) . "\" berhasil $status_text!");
             } else {
                 setAlert('danger', 'Data siswa tidak ditemukan!');
             }
         } catch (PDOException $e) {
-            setAlert('danger', 'Gagal mengubah status siswa!');
+            setAlert('danger', 'Gagal mengubah status siswa: ' . $e->getMessage());
         }
     } else {
         setAlert('danger', 'ID siswa tidak valid!');
@@ -133,15 +140,31 @@ $siswa_list = $stmt->fetchAll();
 
 // Get statistics
 $stats = [];
-$stmt = $pdo->query("SELECT status, COUNT(*) as count FROM siswa GROUP BY status");
-while ($row = $stmt->fetch()) {
-    $stats[$row['status']] = $row['count'];
+try {
+    $stmt = $pdo->query("SELECT status, COUNT(*) as count FROM siswa GROUP BY status");
+    while ($row = $stmt->fetch()) {
+        $stats[$row['status']] = $row['count'];
+    }
+
+    $stmt = $pdo->query("SELECT tingkat, COUNT(*) as count FROM siswa WHERE status = 'aktif' GROUP BY tingkat ORDER BY tingkat");
+    $tingkat_stats = [];
+    while ($row = $stmt->fetch()) {
+        $tingkat_stats[$row['tingkat']] = $row['count'];
+    }
+} catch (Exception $e) {
+    $stats = [];
+    $tingkat_stats = [];
 }
 
-$stmt = $pdo->query("SELECT tingkat, COUNT(*) as count FROM siswa WHERE status = 'aktif' GROUP BY tingkat ORDER BY tingkat");
-$tingkat_stats = [];
-while ($row = $stmt->fetch()) {
-    $tingkat_stats[$row['tingkat']] = $row['count'];
+// Helper function for query string
+function buildQueryString($params) {
+    $queryParts = [];
+    foreach ($params as $key => $value) {
+        if (!empty($value)) {
+            $queryParts[] = $key . '=' . urlencode($value);
+        }
+    }
+    return !empty($queryParts) ? '&' . implode('&', $queryParts) : '';
 }
 
 // Breadcrumb
@@ -345,16 +368,18 @@ echo $breadcrumb;
                                     title="Edit" data-bs-toggle="tooltip">
                                     <i class="bi bi-pencil"></i>
                                 </a>
-                                <a href="javascript:void(0)"
-                                    onclick="toggleStatus(<?php echo $siswa['id']; ?>, '<?php echo $siswa['status']; ?>', '<?php echo htmlspecialchars($siswa['nama']); ?>')"
-                                    class="btn btn-outline-secondary"
+                                <a href="index.php?action=toggle_status&id=<?php echo $siswa['id']; ?>"
+                                    class="btn btn-outline-secondary confirm-toggle"
+                                    data-nama="<?php echo htmlspecialchars($siswa['nama']); ?>"
+                                    data-status="<?php echo $siswa['status']; ?>"
                                     title="<?php echo $siswa['status'] === 'aktif' ? 'Nonaktifkan' : 'Aktifkan'; ?>"
                                     data-bs-toggle="tooltip">
                                     <i class="bi bi-arrow-repeat"></i>
                                 </a>
-                                <a href="javascript:void(0)"
-                                    onclick="confirmDelete(<?php echo $siswa['id']; ?>, '<?php echo htmlspecialchars($siswa['nama']); ?>')"
-                                    class="btn btn-outline-danger" title="Hapus" data-bs-toggle="tooltip">
+                                <a href="index.php?action=delete&id=<?php echo $siswa['id']; ?>"
+                                    class="btn btn-outline-danger confirm-delete"
+                                    data-nama="<?php echo htmlspecialchars($siswa['nama']); ?>" title="Hapus"
+                                    data-bs-toggle="tooltip">
                                     <i class="bi bi-trash"></i>
                                 </a>
                             </div>
@@ -402,45 +427,97 @@ echo $breadcrumb;
 
 <!-- JavaScript Functions -->
 <script>
-// Initialize tooltips
+// Initialize tooltips dan event listeners
 document.addEventListener('DOMContentLoaded', function() {
+    // Initialize tooltips
     var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
     var tooltipList = tooltipTriggerList.map(function(tooltipTriggerEl) {
         return new bootstrap.Tooltip(tooltipTriggerEl);
     });
+
+    // Handle delete confirmation - Simple approach
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('.confirm-delete')) {
+            e.preventDefault();
+            const link = e.target.closest('.confirm-delete');
+            const nama = link.getAttribute('data-nama');
+            const href = link.getAttribute('href');
+
+            // Simple confirm dialog
+            const confirmMessage = `KONFIRMASI HAPUS SISWA\n\n` +
+                `Nama: ${nama}\n\n` +
+                `PERINGATAN:\n` +
+                `• Data penilaian akan ikut terhapus\n` +
+                `• Hasil perhitungan akan ikut terhapus\n` +
+                `• Tindakan tidak dapat dibatalkan\n\n` +
+                `Yakin ingin menghapus?`;
+
+            if (confirm(confirmMessage)) {
+                // Show simple loading
+                const originalText = link.innerHTML;
+                link.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+                link.style.pointerEvents = 'none';
+
+                // Navigate to delete URL
+                window.location.href = href;
+            }
+        }
+
+        // Handle toggle status confirmation
+        if (e.target.closest('.confirm-toggle')) {
+            e.preventDefault();
+            const link = e.target.closest('.confirm-toggle');
+            const nama = link.getAttribute('data-nama');
+            const status = link.getAttribute('data-status');
+            const href = link.getAttribute('href');
+
+            const newStatus = status === 'aktif' ? 'NON-AKTIF' : 'AKTIF';
+            const action = status === 'aktif' ? 'menonaktifkan' : 'mengaktifkan';
+
+            const confirmMessage = `KONFIRMASI UBAH STATUS\n\n` +
+                `Nama: ${nama}\n` +
+                `Status saat ini: ${status.toUpperCase()}\n` +
+                `Status baru: ${newStatus}\n\n` +
+                `Yakin ingin ${action} siswa ini?`;
+
+            if (confirm(confirmMessage)) {
+                // Show loading
+                const originalText = link.innerHTML;
+                link.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+                link.style.pointerEvents = 'none';
+
+                // Navigate to toggle URL
+                window.location.href = href;
+            }
+        }
+    });
+
+    // Auto-hide alerts
+    const alerts = document.querySelectorAll('.alert');
+    alerts.forEach(function(alert) {
+        setTimeout(function() {
+            if (alert && alert.parentNode) {
+                try {
+                    const bsAlert = new bootstrap.Alert(alert);
+                    if (bsAlert) {
+                        bsAlert.close();
+                    }
+                } catch (e) {
+                    alert.style.display = 'none';
+                }
+            }
+        }, 5000);
+    });
 });
 
-// Confirm delete function
-function confirmDelete(id, nama) {
-    if (confirm(
-            `Yakin ingin menghapus data siswa "${nama}"?\n\nSemua data penilaian dan hasil perhitungan akan ikut terhapus!`
-        )) {
-        window.location.href = `index.php?action=delete&id=${id}`;
-    }
-}
+// Debug function - bisa dipanggil dari console untuk testing
+window.testConfirm = function(message) {
+    alert('Test: ' + message);
+    return confirm('Test confirm: ' + message);
+};
 
-// Toggle status function
-function toggleStatus(id, currentStatus, nama) {
-    const newStatus = currentStatus === 'aktif' ? 'nonaktif' : 'aktif';
-    const action = newStatus === 'aktif' ? 'mengaktifkan' : 'menonaktifkan';
-
-    if (confirm(`Yakin ingin ${action} siswa "${nama}"?`)) {
-        window.location.href = `index.php?action=toggle_status&id=${id}`;
-    }
-}
-
-// Build query string helper (PHP function equivalent in JS)
-<?php
-function buildQueryString($params) {
-    $queryParts = [];
-    foreach ($params as $key => $value) {
-        if (!empty($value)) {
-            $queryParts[] = $key . '=' . urlencode($value);
-        }
-    }
-    return !empty($queryParts) ? '&' . implode('&', $queryParts) : '';
-}
-?>
+// Log untuk debugging
+console.log('Siswa index.php JavaScript loaded successfully');
 </script>
 
 <?php require_once '../../includes/footer.php'; ?>

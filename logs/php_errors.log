@@ -1,0 +1,120 @@
+[08-Jul-2025 14:15:46 Asia/Jakarta] Database error during login: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'status' in 'where clause'
+[08-Jul-2025 14:15:56 Asia/Jakarta] Database error during login: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'status' in 'where clause'
+[08-Jul-2025 14:16:01 Asia/Jakarta] Database error during login: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'status' in 'where clause'
+[08-Jul-2025 14:16:41 Asia/Jakarta] Database error during login: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'status' in 'where clause'
+[08-Jul-2025 14:17:56 Asia/Jakarta] Database error during login: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'status' in 'where clause'
+[08-Jul-2025 14:18:02 Asia/Jakarta] Database error during login: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'status' in 'where clause'
+[08-Jul-2025 14:20:04 Asia/Jakarta] Database error during login: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'status' in 'where clause'
+[08-Jul-2025 14:20:16 Asia/Jakarta] Database error during login: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'status' in 'where clause'
+[10-Jul-2025 20:06:37 Asia/Jakarta] POST received for siswa_id: 54
+[10-Jul-2025 20:06:37 Asia/Jakarta] Nilai kriteria: Array
+(
+    [1] => 85
+    [2] => SB
+    [3] => 1
+    [4] => SB
+    [5] => SB
+)
+
+[10-Jul-2025 20:06:37 Asia/Jakarta] Saving: siswa=54, kriteria=1, kategori=85, numerik=5
+[10-Jul-2025 20:06:37 Asia/Jakarta] Saving: siswa=54, kriteria=2, kategori=SB, numerik=5
+[10-Jul-2025 20:06:37 Asia/Jakarta] Saving: siswa=54, kriteria=3, kategori=1, numerik=2
+[10-Jul-2025 20:06:37 Asia/Jakarta] Saving: siswa=54, kriteria=4, kategori=SB, numerik=5
+[10-Jul-2025 20:06:37 Asia/Jakarta] Saving: siswa=54, kriteria=5, kategori=SB, numerik=5
+[10-Jul-2025 20:06:37 Asia/Jakarta] Redirecting to: http://localhost/spk-beasiswa-prestasi/modules/penilaian/index.php?siswa_id=54
+[10-Jul-2025 20:08:10 Asia/Jakarta] POST received for siswa_id: 54
+[10-Jul-2025 20:08:10 Asia/Jakarta] Nilai kriteria: Array
+(
+    [1] => 85
+    [2] => SB
+    [3] => 1
+    [4] => SB
+    [5] => SB
+)
+
+[10-Jul-2025 20:08:10 Asia/Jakarta] Saving: siswa=54, kriteria=1, kategori=85, numerik=5
+[10-Jul-2025 20:08:10 Asia/Jakarta] Saving: siswa=54, kriteria=2, kategori=SB, numerik=5
+[10-Jul-2025 20:08:10 Asia/Jakarta] Saving: siswa=54, kriteria=3, kategori=1, numerik=2
+[10-Jul-2025 20:08:10 Asia/Jakarta] Saving: siswa=54, kriteria=4, kategori=SB, numerik=5
+[10-Jul-2025 20:08:10 Asia/Jakarta] Saving: siswa=54, kriteria=5, kategori=SB, numerik=5
+[10-Jul-2025 20:08:10 Asia/Jakarta] Redirecting to: http://localhost/spk-beasiswa-prestasi/modules/penilaian/index.php?siswa_id=54
+[10-Jul-2025 20:08:22 Asia/Jakarta] POST received for siswa_id: 54
+[10-Jul-2025 20:08:22 Asia/Jakarta] Nilai kriteria: Array
+(
+    [1] => 85
+    [2] => C
+    [3] => 1
+    [4] => SB
+    [5] => SB
+)
+
+[10-Jul-2025 20:08:22 Asia/Jakarta] Saving: siswa=54, kriteria=1, kategori=85, numerik=5
+[10-Jul-2025 20:08:22 Asia/Jakarta] Saving: siswa=54, kriteria=2, kategori=C, numerik=3
+[10-Jul-2025 20:08:22 Asia/Jakarta] Saving: siswa=54, kriteria=3, kategori=1, numerik=2
+[10-Jul-2025 20:08:22 Asia/Jakarta] Saving: siswa=54, kriteria=4, kategori=SB, numerik=5
+[10-Jul-2025 20:08:22 Asia/Jakarta] Saving: siswa=54, kriteria=5, kategori=SB, numerik=5
+[10-Jul-2025 20:08:22 Asia/Jakarta] Redirecting to: http://localhost/spk-beasiswa-prestasi/modules/penilaian/index.php?siswa_id=54
+[10-Jul-2025 20:08:48 Asia/Jakarta] POST received for siswa_id: 54
+[10-Jul-2025 20:08:48 Asia/Jakarta] Nilai kriteria: Array
+(
+    [1] => 85
+    [2] => B
+    [3] => 1
+    [4] => KB
+    [5] => SKB
+)
+
+[10-Jul-2025 20:08:48 Asia/Jakarta] Saving: siswa=54, kriteria=1, kategori=85, numerik=5
+[10-Jul-2025 20:08:48 Asia/Jakarta] Saving: siswa=54, kriteria=2, kategori=B, numerik=4
+[10-Jul-2025 20:08:48 Asia/Jakarta] Saving: siswa=54, kriteria=3, kategori=1, numerik=2
+[10-Jul-2025 20:08:48 Asia/Jakarta] Saving: siswa=54, kriteria=4, kategori=KB, numerik=2
+[10-Jul-2025 20:08:48 Asia/Jakarta] Saving: siswa=54, kriteria=5, kategori=SKB, numerik=1
+[10-Jul-2025 20:08:48 Asia/Jakarta] Redirecting to: http://localhost/spk-beasiswa-prestasi/modules/penilaian/index.php?siswa_id=54
+[10-Jul-2025 20:10:44 Asia/Jakarta] POST received for siswa_id: 55
+[10-Jul-2025 20:10:44 Asia/Jakarta] Nilai kriteria: Array
+(
+    [1] => 85
+    [2] => SB
+    [3] => 5
+    [4] => SB
+    [5] => B
+)
+
+[10-Jul-2025 20:10:44 Asia/Jakarta] Saving: siswa=55, kriteria=1, kategori=85, numerik=5
+[10-Jul-2025 20:10:44 Asia/Jakarta] Saving: siswa=55, kriteria=2, kategori=SB, numerik=5
+[10-Jul-2025 20:10:44 Asia/Jakarta] Saving: siswa=55, kriteria=3, kategori=5, numerik=4
+[10-Jul-2025 20:10:44 Asia/Jakarta] Saving: siswa=55, kriteria=4, kategori=SB, numerik=5
+[10-Jul-2025 20:10:44 Asia/Jakarta] Saving: siswa=55, kriteria=5, kategori=B, numerik=4
+[10-Jul-2025 20:10:44 Asia/Jakarta] Redirecting to: index.php
+[10-Jul-2025 20:10:48 Asia/Jakarta] POST received for siswa_id: 55
+[10-Jul-2025 20:10:48 Asia/Jakarta] Nilai kriteria: Array
+(
+    [1] => 85
+    [2] => SB
+    [3] => 5
+    [4] => SB
+    [5] => B
+)
+
+[10-Jul-2025 20:10:48 Asia/Jakarta] Saving: siswa=55, kriteria=1, kategori=85, numerik=5
+[10-Jul-2025 20:10:48 Asia/Jakarta] Saving: siswa=55, kriteria=2, kategori=SB, numerik=5
+[10-Jul-2025 20:10:48 Asia/Jakarta] Saving: siswa=55, kriteria=3, kategori=5, numerik=4
+[10-Jul-2025 20:10:48 Asia/Jakarta] Saving: siswa=55, kriteria=4, kategori=SB, numerik=5
+[10-Jul-2025 20:10:48 Asia/Jakarta] Saving: siswa=55, kriteria=5, kategori=B, numerik=4
+[10-Jul-2025 20:10:48 Asia/Jakarta] Redirecting to: index.php
+[10-Jul-2025 20:11:28 Asia/Jakarta] POST received for siswa_id: 55
+[10-Jul-2025 20:11:28 Asia/Jakarta] Nilai kriteria: Array
+(
+    [1] => 85
+    [2] => SKB
+    [3] => 1
+    [4] => SB
+    [5] => B
+)
+
+[10-Jul-2025 20:11:28 Asia/Jakarta] Saving: siswa=55, kriteria=1, kategori=85, numerik=5
+[10-Jul-2025 20:11:28 Asia/Jakarta] Saving: siswa=55, kriteria=2, kategori=SKB, numerik=1
+[10-Jul-2025 20:11:28 Asia/Jakarta] Saving: siswa=55, kriteria=3, kategori=1, numerik=2
+[10-Jul-2025 20:11:28 Asia/Jakarta] Saving: siswa=55, kriteria=4, kategori=SB, numerik=5
+[10-Jul-2025 20:11:28 Asia/Jakarta] Saving: siswa=55, kriteria=5, kategori=B, numerik=4
+[10-Jul-2025 20:11:28 Asia/Jakarta] Redirecting to: index.php

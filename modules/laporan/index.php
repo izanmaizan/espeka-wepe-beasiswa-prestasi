@@ -42,7 +42,7 @@ echo $breadcrumb;
         Laporan & Hasil Beasiswa Prestasi
     </h1>
 
-    <!-- TOMBOL EXPORT YANG DIOPTIMALKAN -->
+    <!-- TOMBOL CETAK LAPORAN PDF -->
     <div class="btn-toolbar mb-2 mb-md-0">
         <div class="btn-group me-2">
             <?php if (hasRole('admin')): ?>
@@ -54,29 +54,21 @@ echo $breadcrumb;
 
             <?php if (!empty($hasil_perhitungan)): ?>
             <!-- Tombol Cetak PDF -->
-            <a href="export.php?view=<?php echo $view_mode; ?>&tingkat=<?php echo $tingkat_filter; ?>&format=pdf"
+            <a href="export.php?view=<?php echo $view_mode; ?>&tingkat=<?php echo $tingkat_filter; ?>"
                 class="btn btn-outline-primary" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"
                 title="Cetak Laporan PDF Resmi">
                 <i class="bi bi-printer"></i>
-                Cetak
-            </a>
-
-            <!-- Tombol Export Excel -->
-            <a href="export.php?view=<?php echo $view_mode; ?>&tingkat=<?php echo $tingkat_filter; ?>&format=excel"
-                class="btn btn-outline-success" data-bs-toggle="tooltip" data-bs-placement="bottom"
-                title="Export Excel dengan Styling">
-                <i class="bi bi-file-earmark-excel"></i>
-                Export Excel
+                Cetak Laporan
             </a>
             <?php endif; ?>
         </div>
 
-        <!-- Status Export Info -->
+        <!-- Status Laporan Info -->
         <?php if (!empty($hasil_perhitungan)): ?>
         <div class="btn-group">
             <small class="text-muted align-self-center ms-3">
                 <i class="bi bi-info-circle"></i>
-                Export:
+                Laporan:
                 <strong>
                     <?php 
                 if ($view_mode === 'global') {
@@ -650,12 +642,10 @@ document.addEventListener('DOMContentLoaded', function() {
         return new bootstrap.Tooltip(tooltipTriggerEl);
     });
 
-    // Track export clicks dan loading animation
+    // Track cetak laporan clicks dan loading animation
     const exportLinks = document.querySelectorAll('a[href*="export.php"]');
     exportLinks.forEach(link => {
         link.addEventListener('click', function(e) {
-            const format = this.href.includes('format=pdf') ? 'PDF' :
-                this.href.includes('format=excel') ? 'Excel' : 'CSV';
             const view = this.href.includes('view=global') ? 'Global' : 'Tingkat';
 
             // Add loading state
@@ -670,29 +660,20 @@ document.addEventListener('DOMContentLoaded', function() {
             }, 2000);
 
             // Analytics tracking
-            console.log(`Export: ${format} - ${view}`);
+            console.log(`Cetak Laporan PDF - ${view}`);
 
-            // For PDF, open in new tab
-            if (format === 'PDF') {
-                this.target = '_blank';
-            }
+            // Open PDF in new tab
+            this.target = '_blank';
         });
     });
 
-    // Keyboard shortcuts untuk export
+    // Keyboard shortcuts untuk cetak laporan
     document.addEventListener('keydown', function(e) {
-        // Ctrl+P untuk PDF export
+        // Ctrl+P untuk cetak laporan PDF
         if (e.ctrlKey && e.key === 'p') {
             e.preventDefault();
-            const pdfLink = document.querySelector('a[href*="format=pdf"]');
+            const pdfLink = document.querySelector('a[href*="export.php"]');
             if (pdfLink) pdfLink.click();
-        }
-
-        // Ctrl+E untuk Excel export
-        if (e.ctrlKey && e.key === 'e') {
-            e.preventDefault();
-            const excelLink = document.querySelector('a[href*="format=excel"]');
-            if (excelLink) excelLink.click();
         }
     });
 });

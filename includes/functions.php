@@ -132,109 +132,172 @@ function detectTingkatFromKelas($kelas) {
     return '7'; // default
 }
 
-// Fungsi untuk menghitung Weighted Product per tingkat
-function hitungWeightedProductPerTingkat($pdo, $tingkat = null) {
-    // Ambil siswa dan kriteria
-    $siswa = getSiswaPerTingkat($pdo, $tingkat);
+// Fungsi untuk normalisasi bobot kriteria
+function normalisasiBobot($kriteria) {
+    $total_bobot = 0;
+    foreach ($kriteria as $k) {
+        $total_bobot += $k['bobot'];
+    }
+    
+    $kriteria_normalized = [];
+    foreach ($kriteria as $k) {
+        $k['bobot_normalized'] = $total_bobot > 0 ? $k['bobot'] / $total_bobot : 0;
+        $kriteria_normalized[] = $k;
+    }
+    
+    return $kriteria_normalized;
+}
+
+// Fungsi untuk menghitung Weighted Product - DIPERBAIKI
+function hitungSemuaTingkat($pdo) {
+    // Ambil semua siswa aktif dan kriteria
+    $semua_siswa = getAllSiswaAktif($pdo);
     $kriteria = getAllKriteria($pdo);
     
-    if (empty($siswa) || empty($kriteria)) {
+    if (empty($semua_siswa) || empty($kriteria)) {
         return false;
     }
     
-    $hasil = [];
-    $total_s = 0;
+    // Normalisasi bobot kriteria
+    $kriteria_normalized = normalisasiBobot($kriteria);
     
-    // Langkah 1: Hitung nilai S untuk setiap alternatif
-    foreach ($siswa as $s) {
+    $semua_hasil = [];
+    $hasil_per_tingkat = [];
+    
+    // LANGKAH 1: Hitung skor S untuk SEMUA siswa (tidak per tingkat)
+    foreach ($semua_siswa as $siswa) {
+        $tingkat = $siswa['tingkat'];
         $skor_s = 1;
-        $penilaian = getPenilaianSiswa($pdo, $s['id']);
+        $penilaian = getPenilaianSiswa($pdo, $siswa['id']);
         $nilai_lengkap = true;
         
-        foreach ($penilaian as $p) {
-            if ($p['nilai'] === null || $p['nilai'] <= 0) {
-                $nilai_lengkap = false;
-                break;
+        // Cek kelengkapan penilaian
+        $kriteria_terpenuhi = 0;
+        foreach ($kriteria_normalized as $k) {
+            $nilai_kriteria = null;
+            foreach ($penilaian as $p) {
+                if ($p['kode'] === $k['kode']) {
+                    $nilai_kriteria = $p['nilai'];
+                    break;
+                }
             }
             
-            if ($p['jenis'] === 'cost') {
-                // Untuk kriteria cost, gunakan 1/nilai
-                $skor_s *= pow((1 / $p['nilai']), $p['bobot']);
+            if ($nilai_kriteria === null || $nilai_kriteria <= 0) {
+                $nilai_lengkap = false;
+                break;
             } else {
-                // Untuk kriteria benefit, gunakan nilai langsung
-                $skor_s *= pow($p['nilai'], $p['bobot']);
+                $kriteria_terpenuhi++;
             }
         }
         
-        // Hanya masukkan jika penilaian lengkap
-        if ($nilai_lengkap) {
-            $hasil[$s['id']] = [
-                'siswa' => $s,
+        // Hanya proses jika penilaian lengkap
+        if ($nilai_lengkap && $kriteria_terpenuhi >= count($kriteria_normalized)) {
+            // Hitung skor S menggunakan formula Weighted Product
+            foreach ($kriteria_normalized as $k) {
+                $nilai_kriteria = null;
+                foreach ($penilaian as $p) {
+                    if ($p['kode'] === $k['kode']) {
+                        $nilai_kriteria = $p['nilai'];
+                        break;
+                    }
+                }
+                
+                if ($nilai_kriteria > 0) {
+                    if ($k['jenis'] === 'cost') {
+                        // Untuk kriteria cost: (1/nilai)^bobot
+                        $skor_s *= pow((1 / $nilai_kriteria), $k['bobot_normalized']);
+                    } else {
+                        // Untuk kriteria benefit: nilai^bobot
+                        $skor_s *= pow($nilai_kriteria, $k['bobot_normalized']);
+                    }
+                }
+            }
+            
+            $semua_hasil[$siswa['id']] = [
+                'siswa' => $siswa,
+                'tingkat' => $tingkat,
                 'skor_s' => $skor_s,
                 'skor_v' => 0,
-                'penilaian' => $penilaian
+                'penilaian' => $penilaian,
+                'ranking_tingkat' => 0,
+                'ranking_global' => 0
             ];
             
-            $total_s += $skor_s;
-        }
-    }
-    
-    // Langkah 2: Hitung nilai V (normalisasi)
-    foreach ($hasil as $id => &$h) {
-        $h['skor_v'] = $total_s > 0 ? $h['skor_s'] / $total_s : 0;
-    }
-    
-    // Langkah 3: Urutkan berdasarkan skor V (descending)
-    uasort($hasil, function($a, $b) {
-        return $b['skor_v'] <=> $a['skor_v'];
-    });
-    
-    // Langkah 4: Berikan ranking
-    $ranking = 1;
-    foreach ($hasil as $id => &$h) {
-        $h['ranking'] = $ranking++;
-    }
-    
-    return $hasil;
-}
-
-// Fungsi untuk menghitung semua tingkat dan ranking global
-function hitungSemuaTingkat($pdo) {
-    $semua_hasil = [];
-    $tingkat_list = ['7', '8', '9'];
-    
-    // Hitung per tingkat
-    foreach ($tingkat_list as $tingkat) {
-        $hasil_tingkat = hitungWeightedProductPerTingkat($pdo, $tingkat);
-        if ($hasil_tingkat) {
-            foreach ($hasil_tingkat as $id => $data) {
-                $data['tingkat'] = $tingkat;
-                $data['ranking_tingkat'] = $data['ranking'];
-                $semua_hasil[$id] = $data;
+            // Kelompokkan per tingkat untuk ranking tingkat
+            if (!isset($hasil_per_tingkat[$tingkat])) {
+                $hasil_per_tingkat[$tingkat] = [];
             }
+            $hasil_per_tingkat[$tingkat][$siswa['id']] = &$semua_hasil[$siswa['id']];
         }
     }
     
-    // Hitung ranking global
+    // LANGKAH 2: Hitung total S untuk normalisasi GLOBAL
+    $total_s_global = 0;
+    foreach ($semua_hasil as $hasil) {
+        $total_s_global += $hasil['skor_s'];
+    }
+    
+    // LANGKAH 3: Hitung skor V global
+    foreach ($semua_hasil as $id => &$hasil) {
+        $hasil['skor_v'] = $total_s_global > 0 ? $hasil['skor_s'] / $total_s_global : 0;
+    }
+    
+    // LANGKAH 4: Ranking GLOBAL
     uasort($semua_hasil, function($a, $b) {
         return $b['skor_v'] <=> $a['skor_v'];
     });
     
     $ranking_global = 1;
-    foreach ($semua_hasil as $id => &$data) {
-        $data['ranking_global'] = $ranking_global++;
-        // Top 3 per tingkat dan top 10 global
-        $data['is_penerima_tingkat'] = $data['ranking_tingkat'] <= 3;
-        $data['is_penerima_global'] = $ranking_global <= 10;
+    foreach ($semua_hasil as $id => &$hasil) {
+        $hasil['ranking_global'] = $ranking_global++;
+    }
+    
+    // LANGKAH 5: Ranking PER TINGKAT
+    foreach (['7', '8', '9'] as $tingkat) {
+        if (isset($hasil_per_tingkat[$tingkat])) {
+            // Urutkan per tingkat berdasarkan skor V
+            uasort($hasil_per_tingkat[$tingkat], function($a, $b) {
+                return $b['skor_v'] <=> $a['skor_v'];
+            });
+            
+            $ranking_tingkat = 1;
+            foreach ($hasil_per_tingkat[$tingkat] as $id => &$hasil) {
+                $hasil['ranking_tingkat'] = $ranking_tingkat++;
+            }
+        }
+    }
+    
+    // LANGKAH 6: Tentukan status penerima
+    foreach ($semua_hasil as $id => &$hasil) {
+        $hasil['is_penerima_tingkat'] = $hasil['ranking_tingkat'] <= 3;
+        $hasil['is_penerima_global'] = $hasil['ranking_global'] <= 10;
     }
     
     return $semua_hasil;
 }
 
-// Fungsi untuk menyimpan hasil perhitungan (updated untuk multi-tingkat)
+// Fungsi untuk menghitung Weighted Product per tingkat (untuk keperluan khusus)
+function hitungWeightedProductPerTingkat($pdo, $tingkat = null) {
+    $semua_hasil = hitungSemuaTingkat($pdo);
+    
+    if (!$semua_hasil || !$tingkat) {
+        return false;
+    }
+    
+    // Filter hasil untuk tingkat tertentu
+    $hasil_tingkat = array_filter($semua_hasil, function($hasil) use ($tingkat) {
+        return $hasil['tingkat'] === $tingkat;
+    });
+    
+    return $hasil_tingkat;
+}
+
+// Fungsi untuk menyimpan hasil perhitungan (updated)
 function simpanHasilPerhitungan($pdo, $hasil_perhitungan) {
     try {
-        // Hapus hasil perhitungan lama untuk tahun ajaran yang sama
+        $pdo->beginTransaction();
+        
+        // Hapus hasil perhitungan lama
         $tahun_ajaran = date('Y') . '/' . (date('Y') + 1);
         $stmt = $pdo->prepare("DELETE FROM hasil_perhitungan WHERE tahun_ajaran = ?");
         $stmt->execute([$tahun_ajaran]);
@@ -259,8 +322,11 @@ function simpanHasilPerhitungan($pdo, $hasil_perhitungan) {
             ]);
         }
         
+        $pdo->commit();
         return true;
     } catch (PDOException $e) {
+        $pdo->rollBack();
+        error_log("Error saving calculation results: " . $e->getMessage());
         return false;
     }
 }
@@ -292,8 +358,8 @@ function getHasilPerhitunganGlobal($pdo) {
         SELECT hp.*, s.nis, s.nama, s.kelas, s.tingkat
         FROM hasil_perhitungan hp
         JOIN siswa s ON hp.siswa_id = s.id
+        WHERE hp.ranking_global <= 10
         ORDER BY hp.ranking_global ASC
-        LIMIT 10
     ");
     $stmt->execute();
     return $stmt->fetchAll();
@@ -338,7 +404,7 @@ function getStatistikHasil($pdo) {
     // Total penerima global
     $stmt = $pdo->query("
         SELECT COUNT(*) as total_global,
-               COUNT(CASE WHEN is_penerima = 1 THEN 1 END) as penerima_global
+               COUNT(CASE WHEN ranking_global <= 10 THEN 1 END) as penerima_global
         FROM hasil_perhitungan
     ");
     $stats['global'] = $stmt->fetch();
@@ -374,5 +440,36 @@ function generateBreadcrumb($items) {
     
     $breadcrumb .= '</ol></nav>';
     return $breadcrumb;
+}
+
+// Fungsi untuk debug perhitungan (optional - untuk testing)
+function debugPerhitungan($pdo) {
+    $hasil = hitungSemuaTingkat($pdo);
+    
+    echo "<h3>Debug Hasil Perhitungan:</h3>";
+    echo "<h4>Top 10 Global:</h4>";
+    $count = 0;
+    foreach ($hasil as $h) {
+        if ($count >= 10) break;
+        echo "{$h['ranking_global']}. {$h['siswa']['nama']} (Tingkat {$h['tingkat']}) - Skor V: " . formatNumber($h['skor_v'], 6) . "<br>";
+        $count++;
+    }
+    
+    echo "<h4>Top 3 Per Tingkat:</h4>";
+    foreach (['7', '8', '9'] as $tingkat) {
+        echo "<strong>Tingkat $tingkat:</strong><br>";
+        $tingkat_results = array_filter($hasil, function($h) use ($tingkat) {
+            return $h['tingkat'] === $tingkat && $h['ranking_tingkat'] <= 3;
+        });
+        
+        usort($tingkat_results, function($a, $b) {
+            return $a['ranking_tingkat'] <=> $b['ranking_tingkat'];
+        });
+        
+        foreach ($tingkat_results as $h) {
+            echo "{$h['ranking_tingkat']}. {$h['siswa']['nama']} - Skor V: " . formatNumber($h['skor_v'], 6) . "<br>";
+        }
+        echo "<br>";
+    }
 }
 ?>

@@ -1,131 +1,197 @@
 <?php
+// Start output buffering untuk mencegah header errors
+ob_start();
+
 $page_title = 'Input Penilaian';
 require_once '../../includes/header.php';
 
 requireRole('admin');
 
-// Handle form submission
+// Handle form submission dengan error handling yang lebih baik
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['siswa_id'])) {
     $siswa_id = (int)$_POST['siswa_id'];
     $nilai_kriteria = $_POST['nilai'] ?? [];
     
-    $errors = [];
-    $success = true;
+    // Pastikan tidak ada output sebelumnya
+    ob_clean();
     
     try {
+        // Validasi basic
+        if (empty($nilai_kriteria)) {
+            throw new Exception('Minimal satu kriteria harus diisi!');
+        }
+        
         $pdo->beginTransaction();
         
-        // Hapus penilaian lama untuk siswa ini
+        // Hapus penilaian lama
         $stmt = $pdo->prepare("DELETE FROM penilaian WHERE siswa_id = ?");
         $stmt->execute([$siswa_id]);
         
+        $berhasil_simpan = 0;
+        
         // Simpan penilaian baru
         foreach ($nilai_kriteria as $kriteria_id => $nilai_input) {
-            if (!empty($nilai_input)) {
-                // Dapatkan info kriteria
+            if (!empty($nilai_input) && trim($nilai_input) !== '') {
+                // Get kriteria info
                 $stmt_kriteria = $pdo->prepare("SELECT kode, jenis FROM kriteria WHERE id = ?");
                 $stmt_kriteria->execute([$kriteria_id]);
                 $kriteria_info = $stmt_kriteria->fetch();
                 
-                $nilai_numerik = 0;
-                $nilai_kategori = $nilai_input;
-                
-                // Konversi ke numerik berdasarkan jenis kriteria
-                if ($kriteria_info['kode'] === 'C1') {
-                    // Kriteria raport (input angka)
-                    $nilai_numerik = konversiRaport((float)$nilai_input);
-                    $nilai_kategori = $nilai_input;
-                } elseif ($kriteria_info['kode'] === 'C3') {
-                    // Kriteria absensi (input angka, cost criteria)
-                    $nilai_numerik = konversiAbsensi((int)$nilai_input);
-                    $nilai_kategori = $nilai_input;
-                } else {
-                    // Kriteria kategori (SB, B, C, KB, SKB)
-                    $nilai_numerik = konversiKategoriKeNumerik($nilai_input);
-                    $nilai_kategori = strtoupper($nilai_input);
+                if ($kriteria_info) {
+                    $nilai_numerik = 0;
+                    $nilai_kategori = trim($nilai_input);
+                    
+                    // Konversi berdasarkan jenis kriteria
+                    if ($kriteria_info['kode'] === 'C1') {
+                        // Raport
+                        $val = (float)$nilai_input;
+                        if ($val >= 81) $nilai_numerik = 5.0;
+                        elseif ($val >= 61) $nilai_numerik = 4.0;
+                        elseif ($val >= 41) $nilai_numerik = 3.0;
+                        elseif ($val >= 21) $nilai_numerik = 2.0;
+                        else $nilai_numerik = 1.0;
+                    } elseif ($kriteria_info['kode'] === 'C3') {
+                        // Absensi
+                        $val = (int)$nilai_input;
+                        if ($val == 0) $nilai_numerik = 1.0;
+                        elseif ($val <= 2) $nilai_numerik = 2.0;
+                        elseif ($val == 3) $nilai_numerik = 3.0;
+                        elseif ($val <= 5) $nilai_numerik = 4.0;
+                        else $nilai_numerik = 5.0;
+                    } else {
+                        // Kategori
+                        $mapping = ['SB' => 5.0, 'B' => 4.0, 'C' => 3.0, 'KB' => 2.0, 'SKB' => 1.0];
+                        $nilai_numerik = $mapping[strtoupper($nilai_input)] ?? 3.0;
+                        $nilai_kategori = strtoupper($nilai_input);
+                    }
+                    
+                    // Insert penilaian
+                    $stmt = $pdo->prepare("INSERT INTO penilaian (siswa_id, kriteria_id, nilai_kategori, nilai_numerik) VALUES (?, ?, ?, ?)");
+                    if ($stmt->execute([$siswa_id, $kriteria_id, $nilai_kategori, $nilai_numerik])) {
+                        $berhasil_simpan++;
+                    }
                 }
-                
-                $stmt = $pdo->prepare("
-                    INSERT INTO penilaian (siswa_id, kriteria_id, nilai_kategori, nilai_numerik) 
-                    VALUES (?, ?, ?, ?)
-                ");
-                $stmt->execute([$siswa_id, $kriteria_id, $nilai_kategori, $nilai_numerik]);
             }
         }
         
-        $pdo->commit();
-        setAlert('success', 'Data penilaian berhasil disimpan!');
+        if ($berhasil_simpan > 0) {
+            $pdo->commit();
+            $_SESSION['alert'] = [
+                'type' => 'success', 
+                'message' => "✅ Data penilaian berhasil disimpan! ($berhasil_simpan kriteria tersimpan)"
+            ];
+        } else {
+            $pdo->rollBack();
+            $_SESSION['alert'] = [
+                'type' => 'warning', 
+                'message' => '⚠️ Tidak ada data yang disimpan. Pastikan minimal satu kriteria diisi dengan benar.'
+            ];
+        }
         
-    } catch (PDOException $e) {
-        $pdo->rollBack();
-        setAlert('danger', 'Gagal menyimpan data penilaian!');
-        $success = false;
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        $_SESSION['alert'] = [
+            'type' => 'danger', 
+            'message' => 'Terjadi kesalahan: ' . $e->getMessage()
+        ];
     }
     
-    if ($success) {
-        header('Location: index.php?siswa_id=' . $siswa_id . '&tingkat=' . ($_GET['tingkat'] ?? ''));
-        exit();
+    // Clean output buffer dan redirect
+    ob_end_clean();
+    
+    // Redirect dengan JavaScript sebagai fallback
+    ?>
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <script>
+    window.location.href = 'index.php';
+    </script>
+</head>
+
+<body>
+    <p>Redirecting...</p>
+    <script>
+    if (!window.location.href.includes('index.php')) {
+        window.location.replace('index.php');
     }
+    </script>
+</body>
+
+</html>
+<?php
+    exit();
 }
 
-// Get data siswa berdasarkan tingkat
-$tingkat_filter = $_GET['tingkat'] ?? '';
-$siswa_list = getSiswaPerTingkat($pdo, $tingkat_filter);
-$kriteria_list = getAllKriteria($pdo);
+// Get data untuk halaman
+try {
+    $tingkat_filter = $_GET['tingkat'] ?? '';
+    $siswa_list = getSiswaPerTingkat($pdo, $tingkat_filter) ?: [];
+    $kriteria_list = getAllKriteria($pdo) ?: [];
+} catch (Exception $e) {
+    $siswa_list = [];
+    $kriteria_list = [];
+}
 
-// Get selected siswa for editing
+// Get selected siswa
 $selected_siswa = null;
 $penilaian_data = [];
 
-if (isset($_GET['siswa_id'])) {
-    $siswa_id = (int)$_GET['siswa_id'];
-    
-    // Get siswa data
-    $stmt = $pdo->prepare("SELECT * FROM siswa WHERE id = ? AND status = 'aktif'");
-    $stmt->execute([$siswa_id]);
-    $selected_siswa = $stmt->fetch();
-    
-    if ($selected_siswa) {
-        // Get existing penilaian
-        $stmt = $pdo->prepare("
-            SELECT kriteria_id, nilai_kategori, nilai_numerik 
-            FROM penilaian 
-            WHERE siswa_id = ?
-        ");
+if (isset($_GET['siswa_id']) && !empty($_GET['siswa_id'])) {
+    try {
+        $siswa_id = (int)$_GET['siswa_id'];
+        $stmt = $pdo->prepare("SELECT * FROM siswa WHERE id = ? AND status = 'aktif'");
         $stmt->execute([$siswa_id]);
-        $penilaian_result = $stmt->fetchAll();
+        $selected_siswa = $stmt->fetch();
         
-        foreach ($penilaian_result as $p) {
-            $penilaian_data[$p['kriteria_id']] = $p['nilai_kategori'];
+        if ($selected_siswa) {
+            $stmt = $pdo->prepare("SELECT kriteria_id, nilai_kategori FROM penilaian WHERE siswa_id = ?");
+            $stmt->execute([$siswa_id]);
+            $penilaian_result = $stmt->fetchAll();
+            
+            foreach ($penilaian_result as $p) {
+                $penilaian_data[$p['kriteria_id']] = $p['nilai_kategori'];
+            }
         }
+    } catch (Exception $e) {
+        $selected_siswa = null;
+        $penilaian_data = [];
     }
 }
 
 // Get progress statistics
 $progress_stats = [];
 foreach (['7', '8', '9'] as $tingkat) {
-    $siswa_tingkat = getSiswaPerTingkat($pdo, $tingkat);
-    $siswa_dinilai = 0;
-    $siswa_lengkap = 0;
-    
-    foreach ($siswa_tingkat as $siswa) {
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM penilaian WHERE siswa_id = ?");
-        $stmt->execute([$siswa['id']]);
-        $jumlah_penilaian = $stmt->fetchColumn();
+    try {
+        $siswa_tingkat = getSiswaPerTingkat($pdo, $tingkat) ?: [];
+        $siswa_dinilai = 0;
+        $siswa_lengkap = 0;
         
-        if ($jumlah_penilaian > 0) {
-            $siswa_dinilai++;
-            if ($jumlah_penilaian >= count($kriteria_list)) {
-                $siswa_lengkap++;
+        foreach ($siswa_tingkat as $siswa) {
+            $stmt = $pdo->prepare("SELECT COUNT(*) FROM penilaian WHERE siswa_id = ?");
+            $stmt->execute([$siswa['id']]);
+            $jumlah_penilaian = $stmt->fetchColumn();
+            
+            if ($jumlah_penilaian > 0) {
+                $siswa_dinilai++;
+                if ($jumlah_penilaian >= count($kriteria_list)) {
+                    $siswa_lengkap++;
+                }
             }
         }
+        
+        $progress_stats[$tingkat] = [
+            'total' => count($siswa_tingkat),
+            'dinilai' => $siswa_dinilai,
+            'lengkap' => $siswa_lengkap
+        ];
+    } catch (Exception $e) {
+        $progress_stats[$tingkat] = ['total' => 0, 'dinilai' => 0, 'lengkap' => 0];
     }
-    
-    $progress_stats[$tingkat] = [
-        'total' => count($siswa_tingkat),
-        'dinilai' => $siswa_dinilai,
-        'lengkap' => $siswa_lengkap
-    ];
 }
 
 // Breadcrumb
@@ -150,6 +216,19 @@ echo $breadcrumb;
         </div>
     </div>
 </div>
+
+<!-- Alert Messages -->
+<?php 
+if (isset($_SESSION['alert'])) {
+    $alert = $_SESSION['alert'];
+    unset($_SESSION['alert']);
+    echo '<div class="alert alert-' . $alert['type'] . ' alert-dismissible fade show" role="alert">';
+    echo '<i class="bi bi-' . ($alert['type'] === 'success' ? 'check-circle' : ($alert['type'] === 'danger' ? 'exclamation-triangle' : 'info-circle')) . '"></i> ';
+    echo $alert['message'];
+    echo '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+    echo '</div>';
+}
+?>
 
 <!-- Progress Statistics -->
 <div class="row mb-4">
@@ -267,14 +346,21 @@ echo $breadcrumb;
 
                 <!-- Daftar Siswa -->
                 <div class="list-group list-group-flush" style="max-height: 500px; overflow-y: auto;" id="siswa-list">
+                    <?php if (!empty($siswa_list)): ?>
                     <?php foreach ($siswa_list as $siswa): ?>
                     <?php
                     // Get penilaian status
-                    $stmt = $pdo->prepare("SELECT COUNT(*) FROM penilaian WHERE siswa_id = ?");
-                    $stmt->execute([$siswa['id']]);
-                    $jumlah_penilaian = $stmt->fetchColumn();
-                    $is_lengkap = $jumlah_penilaian >= count($kriteria_list);
-                    $has_penilaian = $jumlah_penilaian > 0;
+                    try {
+                        $stmt = $pdo->prepare("SELECT COUNT(*) FROM penilaian WHERE siswa_id = ?");
+                        $stmt->execute([$siswa['id']]);
+                        $jumlah_penilaian = $stmt->fetchColumn();
+                        $is_lengkap = $jumlah_penilaian >= count($kriteria_list);
+                        $has_penilaian = $jumlah_penilaian > 0;
+                    } catch (Exception $e) {
+                        $jumlah_penilaian = 0;
+                        $is_lengkap = false;
+                        $has_penilaian = false;
+                    }
                     ?>
                     <a href="?siswa_id=<?php echo $siswa['id']; ?>&tingkat=<?php echo $tingkat_filter; ?>"
                         class="list-group-item list-group-item-action siswa-item <?php echo $selected_siswa && $selected_siswa['id'] === $siswa['id'] ? 'active' : ''; ?>"
@@ -313,6 +399,12 @@ echo $breadcrumb;
                         </div>
                     </a>
                     <?php endforeach; ?>
+                    <?php else: ?>
+                    <div class="text-center py-3 text-muted">
+                        <i class="bi bi-person-x"></i>
+                        <br>Tidak ada data siswa
+                    </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -370,10 +462,8 @@ echo $breadcrumb;
                             </tr>
                             <tr>
                                 <td><strong>Status</strong></td>
-                                <td>:
-                                    <span class="badge bg-success">
-                                        <?php echo ucfirst($selected_siswa['status']); ?>
-                                    </span>
+                                <td>: <span
+                                        class="badge bg-success"><?php echo ucfirst($selected_siswa['status']); ?></span>
                                 </td>
                             </tr>
                         </table>
@@ -381,7 +471,7 @@ echo $breadcrumb;
                 </div>
 
                 <!-- Form Penilaian -->
-                <form method="POST" action="" onsubmit="return validateForm(this)">
+                <form method="POST" action="" id="formPenilaian">
                     <input type="hidden" name="siswa_id" value="<?php echo $selected_siswa['id']; ?>">
 
                     <div class="table-responsive">
@@ -426,21 +516,19 @@ echo $breadcrumb;
                                         <?php endif; ?>
                                     </td>
                                     <td>
-                                        <?php if ($kriteria['kode'] === 'C1'): // Rata-rata Raport ?>
+                                        <?php if ($kriteria['kode'] === 'C1'): ?>
                                         <input type="number" class="form-control form-control-sm"
                                             name="nilai[<?php echo $kriteria['id']; ?>]"
                                             value="<?php echo htmlspecialchars($current_value); ?>" step="0.1" min="0"
                                             max="100" placeholder="0-100" data-kriteria="raport">
                                         <small class="text-muted">Nilai rapor 0-100</small>
-
-                                        <?php elseif ($kriteria['kode'] === 'C3'): // Absensi ?>
+                                        <?php elseif ($kriteria['kode'] === 'C3'): ?>
                                         <input type="number" class="form-control form-control-sm"
                                             name="nilai[<?php echo $kriteria['id']; ?>]"
                                             value="<?php echo htmlspecialchars($current_value); ?>" min="0" max="50"
                                             placeholder="Jumlah tidak masuk" data-kriteria="absensi">
                                         <small class="text-muted">Jumlah tidak masuk (hari)</small>
-
-                                        <?php else: // Kategori (SB, B, C, KB, SKB) ?>
+                                        <?php else: ?>
                                         <select class="form-select form-select-sm"
                                             name="nilai[<?php echo $kriteria['id']; ?>]" data-kriteria="kategori">
                                             <option value="">Pilih Kategori</option>
@@ -464,11 +552,22 @@ echo $breadcrumb;
                                             <?php 
                                             if ($current_value) {
                                                 if ($kriteria['kode'] === 'C1') {
-                                                    echo konversiRaport((float)$current_value);
+                                                    $val = (float)$current_value;
+                                                    if ($val >= 81) echo '5.0';
+                                                    elseif ($val >= 61) echo '4.0';
+                                                    elseif ($val >= 41) echo '3.0';
+                                                    elseif ($val >= 21) echo '2.0';
+                                                    else echo '1.0';
                                                 } elseif ($kriteria['kode'] === 'C3') {
-                                                    echo konversiAbsensi((int)$current_value);
+                                                    $val = (int)$current_value;
+                                                    if ($val == 0) echo '1.0';
+                                                    elseif ($val <= 2) echo '2.0';
+                                                    elseif ($val == 3) echo '3.0';
+                                                    elseif ($val <= 5) echo '4.0';
+                                                    else echo '5.0';
                                                 } else {
-                                                    echo konversiKategoriKeNumerik($current_value);
+                                                    $mapping = ['SB' => '5.0', 'B' => '4.0', 'C' => '3.0', 'KB' => '2.0', 'SKB' => '1.0'];
+                                                    echo $mapping[strtoupper($current_value)] ?? '3.0';
                                                 }
                                             } else {
                                                 echo '-';
@@ -484,11 +583,11 @@ echo $breadcrumb;
                     </div>
 
                     <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-3">
-                        <button type="submit" class="btn btn-primary">
+                        <button type="submit" class="btn btn-primary" id="btnSimpan">
                             <i class="bi bi-save"></i>
                             Simpan Penilaian
                         </button>
-                        <a href="?tingkat=<?php echo $tingkat_filter; ?>" class="btn btn-outline-secondary">
+                        <a href="index.php" class="btn btn-outline-secondary">
                             <i class="bi bi-x-circle"></i>
                             Batal
                         </a>
@@ -504,9 +603,20 @@ echo $breadcrumb;
                 <h6 class="text-muted mt-2">Pilih Siswa untuk Dinilai</h6>
                 <p class="text-muted">Klik nama siswa di sebelah kiri untuk mulai memberikan penilaian.</p>
 
+                <div class="alert alert-info text-start mt-4">
+                    <h6><i class="bi bi-info-circle"></i> Alur Kerja Penilaian:</h6>
+                    <ol class="mb-0 small">
+                        <li>Pilih siswa dari daftar di sebelah kiri</li>
+                        <li>Isi form penilaian untuk semua kriteria</li>
+                        <li>Klik "Simpan Penilaian"</li>
+                        <li>Sistem otomatis kembali ke halaman ini</li>
+                        <li>Lanjutkan dengan siswa berikutnya</li>
+                    </ol>
+                </div>
+
                 <?php if ($tingkat_filter): ?>
                 <div class="mt-3">
-                    <a href="?tingkat=" class="btn btn-outline-primary">
+                    <a href="index.php" class="btn btn-outline-primary">
                         <i class="bi bi-funnel"></i> Lihat Semua Tingkat
                     </a>
                 </div>
@@ -596,7 +706,8 @@ echo $breadcrumb;
                         <li><strong>Kelengkapan:</strong> Pastikan semua kriteria telah diisi untuk perhitungan yang
                             akurat</li>
                         <li><strong>Preview:</strong> Lihat nilai numerik hasil konversi di kolom preview</li>
-                        <li><strong>Auto-save:</strong> Data otomatis tersimpan setelah submit berhasil</li>
+                        <li><strong>Auto-redirect:</strong> Setelah simpan, otomatis kembali ke halaman utama untuk
+                            melanjutkan penilaian siswa lain</li>
                     </ul>
                 </div>
             </div>
@@ -665,35 +776,62 @@ document.addEventListener('change', function(e) {
     }
 });
 
-// Form validation
-function validateForm(form) {
-    const requiredFields = form.querySelectorAll('[name^="nilai["]');
-    let isValid = true;
+// Form submission handling
+document.getElementById('formPenilaian').addEventListener('submit', function(e) {
+    const requiredFields = this.querySelectorAll('[name^="nilai["]');
     let emptyCount = 0;
 
     requiredFields.forEach(function(field) {
         if (!field.value.trim()) {
             emptyCount++;
-            field.classList.add('is-invalid');
-        } else {
-            field.classList.remove('is-invalid');
         }
     });
 
     if (emptyCount === requiredFields.length) {
+        e.preventDefault();
         alert('Minimal satu kriteria harus diisi!');
         return false;
     }
 
     if (emptyCount > 0) {
-        const proceed = confirm(`Ada ${emptyCount} kriteria yang belum diisi. Yakin ingin menyimpan?`);
-        if (!proceed) return false;
+        if (!confirm(
+                `Ada ${emptyCount} kriteria yang belum diisi. Yakin ingin menyimpan?\n\nSetelah penyimpanan, Anda akan dialihkan ke halaman utama.`
+                )) {
+            e.preventDefault();
+            return false;
+        }
+    }
+
+    // Disable submit button
+    const btnSimpan = document.getElementById('btnSimpan');
+    if (btnSimpan) {
+        btnSimpan.disabled = true;
+        btnSimpan.innerHTML = '<i class="bi bi-hourglass-split"></i> Menyimpan...';
     }
 
     return true;
-}
+});
+
+// Auto-hide alerts
+document.addEventListener('DOMContentLoaded', function() {
+    const alerts = document.querySelectorAll('.alert');
+    alerts.forEach(function(alert) {
+        setTimeout(function() {
+            if (alert && alert.parentNode) {
+                const bsAlert = new bootstrap.Alert(alert);
+                if (bsAlert) {
+                    bsAlert.close();
+                }
+            }
+        }, 8000);
+    });
+});
 </script>
 
 <?php endif; ?>
 
-<?php require_once '../../includes/footer.php'; ?>
+<?php 
+// Flush output buffer
+ob_end_flush();
+require_once '../../includes/footer.php'; 
+?>

@@ -1,4 +1,7 @@
 <?php
+// Start output buffering
+ob_start();
+
 $page_title = 'Tambah Siswa';
 require_once '../../includes/header.php';
 
@@ -8,6 +11,9 @@ $errors = [];
 
 // Proses form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Clean output buffer
+    ob_clean();
+    
     $nis = cleanInput($_POST['nis']);
     $nama = cleanInput($_POST['nama']);
     $kelas = cleanInput($_POST['kelas']);
@@ -19,58 +25,90 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Auto-detect tingkat from kelas
     $tingkat = detectTingkatFromKelas($kelas);
     
-    // Validasi
-    if (empty($nis)) {
-        $errors['nis'] = 'NIS harus diisi!';
-    } elseif (!preg_match('/^[0-9]+$/', $nis)) {
-        $errors['nis'] = 'NIS hanya boleh berisi angka!';
-    } else {
+    try {
+        // Validasi
+        if (empty($nis)) {
+            throw new Exception('NIS harus diisi!');
+        } elseif (!preg_match('/^[0-9]+$/', $nis)) {
+            throw new Exception('NIS hanya boleh berisi angka!');
+        }
+        
         // Cek duplikasi NIS
         $stmt = $pdo->prepare("SELECT COUNT(*) FROM siswa WHERE nis = ?");
         $stmt->execute([$nis]);
         if ($stmt->fetchColumn() > 0) {
-            $errors['nis'] = 'NIS sudah terdaftar!';
+            throw new Exception('NIS sudah terdaftar!');
         }
-    }
-    
-    if (empty($nama)) {
-        $errors['nama'] = 'Nama harus diisi!';
-    } elseif (strlen($nama) < 3) {
-        $errors['nama'] = 'Nama minimal 3 karakter!';
-    }
-    
-    if (empty($kelas)) {
-        $errors['kelas'] = 'Kelas harus diisi!';
-    }
-    
-    if (empty($jenis_kelamin) || !in_array($jenis_kelamin, ['L', 'P'])) {
-        $errors['jenis_kelamin'] = 'Jenis kelamin harus dipilih!';
-    }
-    
-    if (empty($tahun_ajaran)) {
-        $errors['tahun_ajaran'] = 'Tahun ajaran harus diisi!';
-    }
-    
-    if (!empty($no_hp) && !preg_match('/^[0-9+\-\s]+$/', $no_hp)) {
-        $errors['no_hp'] = 'Format nomor HP tidak valid!';
-    }
-    
-    // Jika tidak ada error, simpan data
-    if (empty($errors)) {
-        try {
-            $stmt = $pdo->prepare("
-                INSERT INTO siswa (nis, nama, kelas, tingkat, jenis_kelamin, alamat, no_hp, tahun_ajaran) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ");
-            $stmt->execute([$nis, $nama, $kelas, $tingkat, $jenis_kelamin, $alamat, $no_hp, $tahun_ajaran]);
-            
-            setAlert('success', "Data siswa berhasil ditambahkan! (Tingkat: $tingkat)");
-            header('Location: index.php');
-            exit();
-        } catch (PDOException $e) {
-            setAlert('danger', 'Gagal menambahkan data siswa!');
+        
+        if (empty($nama)) {
+            throw new Exception('Nama harus diisi!');
+        } elseif (strlen($nama) < 3) {
+            throw new Exception('Nama minimal 3 karakter!');
         }
+        
+        if (empty($kelas)) {
+            throw new Exception('Kelas harus diisi!');
+        }
+        
+        if (empty($jenis_kelamin) || !in_array($jenis_kelamin, ['L', 'P'])) {
+            throw new Exception('Jenis kelamin harus dipilih!');
+        }
+        
+        if (empty($tahun_ajaran)) {
+            throw new Exception('Tahun ajaran harus diisi!');
+        }
+        
+        if (!empty($no_hp) && !preg_match('/^[0-9+\-\s]+$/', $no_hp)) {
+            throw new Exception('Format nomor HP tidak valid!');
+        }
+        
+        // Simpan data
+        $stmt = $pdo->prepare("
+            INSERT INTO siswa (nis, nama, kelas, tingkat, jenis_kelamin, alamat, no_hp, tahun_ajaran) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ");
+        
+        if ($stmt->execute([$nis, $nama, $kelas, $tingkat, $jenis_kelamin, $alamat, $no_hp, $tahun_ajaran])) {
+            $_SESSION['alert'] = [
+                'type' => 'success', 
+                'message' => "✅ Data siswa \"$nama\" berhasil ditambahkan! (Tingkat: $tingkat)"
+            ];
+        } else {
+            throw new Exception('Gagal menyimpan data ke database!');
+        }
+        
+    } catch (Exception $e) {
+        $_SESSION['alert'] = [
+            'type' => 'danger', 
+            'message' => 'Gagal menambahkan siswa: ' . $e->getMessage()
+        ];
     }
+    
+    // Clean redirect
+    ob_end_clean();
+    ?>
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <script>
+    window.location.href = 'index.php';
+    </script>
+</head>
+
+<body>
+    <p>Redirecting...</p>
+    <script>
+    if (!window.location.href.includes('index.php')) {
+        window.location.replace('index.php');
+    }
+    </script>
+</body>
+
+</html>
+<?php
+    exit();
 }
 
 // Default values
@@ -106,6 +144,19 @@ echo $breadcrumb;
     </div>
 </div>
 
+<!-- Alert Messages -->
+<?php 
+if (isset($_SESSION['alert'])) {
+    $alert = $_SESSION['alert'];
+    unset($_SESSION['alert']);
+    echo '<div class="alert alert-' . $alert['type'] . ' alert-dismissible fade show" role="alert">';
+    echo '<i class="bi bi-' . ($alert['type'] === 'success' ? 'check-circle' : 'exclamation-triangle') . '"></i> ';
+    echo $alert['message'];
+    echo '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+    echo '</div>';
+}
+?>
+
 <div class="row">
     <div class="col-md-8">
         <div class="card">
@@ -116,32 +167,22 @@ echo $breadcrumb;
                 </h6>
             </div>
             <div class="card-body">
-                <form method="POST" action="" novalidate>
+                <form method="POST" action="" id="formTambahSiswa">
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label for="nis" class="form-label">
                                 NIS <span class="text-danger">*</span>
                             </label>
-                            <input type="text"
-                                class="form-control <?php echo isset($errors['nis']) ? 'is-invalid' : ''; ?>" id="nis"
-                                name="nis" value="<?php echo htmlspecialchars($nis); ?>"
-                                placeholder="Masukkan NIS siswa" required>
-                            <?php if (isset($errors['nis'])): ?>
-                            <div class="invalid-feedback"><?php echo $errors['nis']; ?></div>
-                            <?php endif; ?>
+                            <input type="text" class="form-control" id="nis" name="nis"
+                                value="<?php echo htmlspecialchars($nis); ?>" placeholder="Masukkan NIS siswa" required>
                         </div>
 
                         <div class="col-md-6 mb-3">
                             <label for="tahun_ajaran" class="form-label">
                                 Tahun Ajaran <span class="text-danger">*</span>
                             </label>
-                            <input type="text"
-                                class="form-control <?php echo isset($errors['tahun_ajaran']) ? 'is-invalid' : ''; ?>"
-                                id="tahun_ajaran" name="tahun_ajaran"
+                            <input type="text" class="form-control" id="tahun_ajaran" name="tahun_ajaran"
                                 value="<?php echo htmlspecialchars($tahun_ajaran); ?>" placeholder="2024/2025" required>
-                            <?php if (isset($errors['tahun_ajaran'])): ?>
-                            <div class="invalid-feedback"><?php echo $errors['tahun_ajaran']; ?></div>
-                            <?php endif; ?>
                         </div>
                     </div>
 
@@ -149,13 +190,9 @@ echo $breadcrumb;
                         <label for="nama" class="form-label">
                             Nama Lengkap <span class="text-danger">*</span>
                         </label>
-                        <input type="text"
-                            class="form-control <?php echo isset($errors['nama']) ? 'is-invalid' : ''; ?>" id="nama"
-                            name="nama" value="<?php echo htmlspecialchars($nama); ?>"
-                            placeholder="Masukkan nama lengkap siswa" required>
-                        <?php if (isset($errors['nama'])): ?>
-                        <div class="invalid-feedback"><?php echo $errors['nama']; ?></div>
-                        <?php endif; ?>
+                        <input type="text" class="form-control" id="nama" name="nama"
+                            value="<?php echo htmlspecialchars($nama); ?>" placeholder="Masukkan nama lengkap siswa"
+                            required>
                     </div>
 
                     <div class="row">
@@ -163,8 +200,8 @@ echo $breadcrumb;
                             <label for="kelas" class="form-label">
                                 Kelas <span class="text-danger">*</span>
                             </label>
-                            <select class="form-select <?php echo isset($errors['kelas']) ? 'is-invalid' : ''; ?>"
-                                id="kelas" name="kelas" required onchange="updateTingkatPreview()">
+                            <select class="form-select" id="kelas" name="kelas" required
+                                onchange="updateTingkatPreview()">
                                 <option value="">Pilih Kelas</option>
 
                                 <optgroup label="Kelas VII">
@@ -200,32 +237,23 @@ echo $breadcrumb;
                                     </option>
                                 </optgroup>
                             </select>
-                            <?php if (isset($errors['kelas'])): ?>
-                            <div class="invalid-feedback"><?php echo $errors['kelas']; ?></div>
-                            <?php else: ?>
                             <div class="form-text">
                                 Tingkat akan otomatis terdeteksi: <span id="tingkat-preview"
                                     class="fw-bold text-primary">-</span>
                             </div>
-                            <?php endif; ?>
                         </div>
 
                         <div class="col-md-6 mb-3">
                             <label for="jenis_kelamin" class="form-label">
                                 Jenis Kelamin <span class="text-danger">*</span>
                             </label>
-                            <select
-                                class="form-select <?php echo isset($errors['jenis_kelamin']) ? 'is-invalid' : ''; ?>"
-                                id="jenis_kelamin" name="jenis_kelamin" required>
+                            <select class="form-select" id="jenis_kelamin" name="jenis_kelamin" required>
                                 <option value="">Pilih Jenis Kelamin</option>
                                 <option value="L" <?php echo $jenis_kelamin === 'L' ? 'selected' : ''; ?>>Laki-laki
                                 </option>
                                 <option value="P" <?php echo $jenis_kelamin === 'P' ? 'selected' : ''; ?>>Perempuan
                                 </option>
                             </select>
-                            <?php if (isset($errors['jenis_kelamin'])): ?>
-                            <div class="invalid-feedback"><?php echo $errors['jenis_kelamin']; ?></div>
-                            <?php endif; ?>
                         </div>
                     </div>
 
@@ -237,13 +265,9 @@ echo $breadcrumb;
 
                     <div class="mb-3">
                         <label for="no_hp" class="form-label">Nomor HP</label>
-                        <input type="text"
-                            class="form-control <?php echo isset($errors['no_hp']) ? 'is-invalid' : ''; ?>" id="no_hp"
-                            name="no_hp" value="<?php echo htmlspecialchars($no_hp); ?>"
+                        <input type="text" class="form-control" id="no_hp" name="no_hp"
+                            value="<?php echo htmlspecialchars($no_hp); ?>"
                             placeholder="Masukkan nomor HP siswa/orangtua">
-                        <?php if (isset($errors['no_hp'])): ?>
-                        <div class="invalid-feedback"><?php echo $errors['no_hp']; ?></div>
-                        <?php endif; ?>
                     </div>
 
                     <div class="d-grid gap-2 d-md-flex justify-content-md-end">
@@ -251,7 +275,7 @@ echo $breadcrumb;
                             <i class="bi bi-x-circle"></i>
                             Batal
                         </a>
-                        <button type="submit" class="btn btn-primary">
+                        <button type="submit" class="btn btn-primary" id="btnSimpan">
                             <i class="bi bi-save"></i>
                             Simpan Data
                         </button>
@@ -331,15 +355,18 @@ echo $breadcrumb;
             </div>
             <div class="card-body">
                 <?php
-                // Get current distribution
-                $stmt = $pdo->query("
-                    SELECT tingkat, COUNT(*) as jumlah 
-                    FROM siswa 
-                    WHERE status = 'aktif' 
-                    GROUP BY tingkat 
-                    ORDER BY tingkat
-                ");
-                $distribusi = $stmt->fetchAll();
+                try {
+                    $stmt = $pdo->query("
+                        SELECT tingkat, COUNT(*) as jumlah 
+                        FROM siswa 
+                        WHERE status = 'aktif' 
+                        GROUP BY tingkat 
+                        ORDER BY tingkat
+                    ");
+                    $distribusi = $stmt->fetchAll();
+                } catch (Exception $e) {
+                    $distribusi = [];
+                }
                 ?>
 
                 <?php if (empty($distribusi)): ?>
@@ -381,10 +408,35 @@ function updateTingkatPreview() {
     }
 }
 
+// Form submission handling
+document.getElementById('formTambahSiswa').addEventListener('submit', function(e) {
+    const btnSimpan = document.getElementById('btnSimpan');
+    if (btnSimpan) {
+        btnSimpan.disabled = true;
+        btnSimpan.innerHTML = '<i class="bi bi-hourglass-split"></i> Menyimpan...';
+    }
+});
+
 // Call on page load if kelas already selected
 document.addEventListener('DOMContentLoaded', function() {
     updateTingkatPreview();
+
+    // Auto-hide alerts
+    const alerts = document.querySelectorAll('.alert');
+    alerts.forEach(function(alert) {
+        setTimeout(function() {
+            if (alert && alert.parentNode) {
+                const bsAlert = new bootstrap.Alert(alert);
+                if (bsAlert) {
+                    bsAlert.close();
+                }
+            }
+        }, 5000);
+    });
 });
 </script>
 
-<?php require_once '../../includes/footer.php'; ?>
+<?php 
+ob_end_flush();
+require_once '../../includes/footer.php'; 
+?>
